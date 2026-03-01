@@ -222,7 +222,7 @@ function ScenarioRow({ scenario, inputs }: { scenario: Scenario; inputs: DealInp
 }
 
 // ─── AI WALKTHROUGH TAB ───────────────────────────────────────────────────────
-function AIWalkthroughTab({ address, buildYear: _buildYear, onAddToScope }: {
+function AIWalkthroughTab({ address, buildYear, onAddToScope }: {
   address: string;
   buildYear: number;
   onAddToScope: (items: ScopeItem[]) => void;
@@ -749,7 +749,7 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
 }
 
 // ─── Scope of Work Tab ────────────────────────────────────────────────────────
-function ScopeOfWorkTab({ scopeItems, address: _address, onAdd, onUpdate, onDelete }: {
+function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete }: {
   scopeItems: ScopeItem[]; address: string;
   onAdd: () => void; onUpdate: (id: string, u: Partial<ScopeItem>) => void; onDelete: (id: string) => void;
 }) {
