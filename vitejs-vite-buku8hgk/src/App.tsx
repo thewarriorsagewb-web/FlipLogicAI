@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { createClient } from "@supabase/supabase-js";
-
+import type { AIFinding, WalkthroughCaptureMode, PendingWalkthroughJob } from "./walkthroughTypes";
+import { WalkthroughMediaRecorder, WALKTHROUGH_TRIGGER_KEY, loadPendingJobs, savePendingJobs } from "./walkthroughMedia";
 // ─── Supabase Client ──────────────────────────────────────────────────────────
 const SUPABASE_URL = "https://gnygraconlpwzvllayoq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdueWdyYWNvbmxwd3p2bGxheW9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NjA4NzQsImV4cCI6MjA5MTUzNjg3NH0.fKZ0G0Q6jGxGrX-onuKmklB1HeSuxyWI3c3lkftOvkg";
@@ -39,15 +40,6 @@ interface ScopeItem {
 interface LenderInfo {
   investorName: string; investorCompany: string;
   investorPhone: string; investorEmail: string; lenderName: string;
-}
-
-interface AIFinding {
-  category: string;
-  description: string;
-  priority: "critical" | "important" | "optional";
-  estimatedCost: number;
-  notes: string;
-  hazmat: boolean;
 }
 
 interface WalkthroughPhoto {
@@ -350,6 +342,12 @@ function ScenarioRow({ scenario, inputs, isMobile = false }: { scenario: Scenari
 function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false }: {
   address: string; buildYear: number; onAddToScope: (items: ScopeItem[]) => void; isMobile?: boolean;
 }) {
+  const [walkMode, setWalkMode] = useState<WalkthroughCaptureMode>("photos");
+  const [triggerPhrase, setTriggerPhrase] = useState(() => localStorage.getItem(WALKTHROUGH_TRIGGER_KEY) || "flag this");
+  const [pendingJobs, setPendingJobs] = useState<PendingWalkthroughJob[]>(() => loadPendingJobs());
+  const [syncingJobId, setSyncingJobId] = useState<string | null>(null);
+  const [mediaAnalyzing, setMediaAnalyzing] = useState(false);
+
   const [apiKey, setApiKey] = useState(() => localStorage.getItem("fliplogic_api_key") || "");
   const [showKey, setShowKey] = useState(false);
   const [photos, setPhotos] = useState<WalkthroughPhoto[]>([]);
@@ -361,7 +359,45 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false }
   const [buildYearInput, setBuildYearInput] = useState(buildYear || 1970);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    const iv = window.setInterval(() => setPendingJobs(loadPendingJobs()), 2000);
+    return () => window.clearInterval(iv);
+  }, []);
+
+  useEffect(() => {
+    setFindings([]);
+    setSelectedFindings(new Set());
+    setError("");
+    setStatus("");
+  }, [walkMode]);
+
   const saveKey = (key: string) => { setApiKey(key); localStorage.setItem("fliplogic_api_key", key); };
+  const saveTriggerPhrase = (t: string) => {
+    setTriggerPhrase(t);
+    localStorage.setItem(WALKTHROUGH_TRIGGER_KEY, t);
+  };
+
+  const syncPendingJob = async (job: PendingWalkthroughJob) => {
+    if (!navigator.onLine) return;
+    setSyncingJobId(job.id);
+    setError("");
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke("analyze-walkthrough", { body: job.payload });
+      if (fnErr) throw new Error(fnErr.message || String(fnErr));
+      const parsed = (data as { findings?: AIFinding[] })?.findings;
+      if (!parsed || !Array.isArray(parsed)) throw new Error("Invalid response from analyze-walkthrough");
+      setFindings(parsed);
+      setSelectedFindings(new Set(parsed.map((_, i) => i)));
+      setStatus(`Synced — ${parsed.length} findings identified.`);
+      const next = loadPendingJobs().filter((j) => j.id !== job.id);
+      savePendingJobs(next);
+      setPendingJobs(next);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Sync failed.");
+    } finally {
+      setSyncingJobId(null);
+    }
+  };
 
   const handlePhotos = async (files: FileList) => {
     const newPhotos: WalkthroughPhoto[] = [];
@@ -423,22 +459,122 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false }
   const hazmatFindings = findings.filter((f) => f.hazmat);
   const totalEstimate = findings.filter((_, i) => selectedFindings.has(i)).reduce((s, f) => s + f.estimatedCost, 0);
 
+  const modeTabs: { id: WalkthroughCaptureMode; label: string }[] = [
+    { id: "photos", label: "📸 Photos" },
+    { id: "audio", label: "🎙️ Audio" },
+    { id: "video", label: "🎥 Video" },
+    { id: "audiovideo", label: "🎙️+🎥 Audio + Video" },
+  ];
+
+  const howItWorksByMode: Record<WalkthroughCaptureMode, { icon: string; text: string }[]> = {
+    photos: [
+      { icon: "📸", text: "Upload photos of each room, exterior, roof, electrical panel, HVAC" },
+      { icon: "🤖", text: "Claude AI analyzes every image for repair needs and hazmat risks" },
+      { icon: "⚠", text: "Pre-1978 homes trigger lead paint warnings automatically" },
+      { icon: "📋", text: "Push findings directly to your Scope of Work with one click" },
+    ],
+    audio: [
+      { icon: "🎙️", text: "Record walkthrough audio in Opus (WebM). Screen stays awake while recording." },
+      { icon: "🚩", text: `Flag moments with the button or by saying “${triggerPhrase.trim() || "flag this"}” (customizable above).` },
+      { icon: "☁️", text: "Offline recordings queue locally; tap Sync when you are back online." },
+      { icon: "📋", text: "Analyze sends audio + flags to Supabase, then pick findings for Scope." },
+    ],
+    video: [
+      { icon: "🎥", text: "Uses the rear camera with VP8/Opus WebM and a live preview while you walk." },
+      { icon: "🖼️", text: "Still frames are captured every 3 seconds for the AI payload." },
+      { icon: "🚩", text: "Same flag controls and voice trigger as audio mode." },
+      { icon: "📋", text: "Analyze uploads frames + video + transcript to the edge function." },
+    ],
+    audiovideo: [
+      { icon: "🎙️", text: "Audio records continuously for the full timeline." },
+      { icon: "🎥", text: "Tap Capture Video for 5-second bursts aligned to the clock." },
+      { icon: "🚩", text: "Flags and trigger phrase work across the whole session." },
+      { icon: "📋", text: "Analyze sends full audio plus burst clips and timestamps." },
+    ],
+  };
+
+  const tabBtnBase = {
+    flex: isMobile ? "1 1 45%" : "1 1 0",
+    minHeight: 60,
+    borderRadius: 10,
+    border: "1px solid #1e293b",
+    fontWeight: 700 as const,
+    fontFamily: "'Syne', sans-serif",
+    cursor: "pointer" as const,
+    fontSize: isMobile ? 14 : 13,
+    padding: "0 10px",
+  };
+
   return (
     <div>
-      <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, marginBottom: 20 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>Anthropic API Key</div>
-          {apiKey && <div style={{ fontSize: 11, color: "#22c55e" }}>✓ Key saved</div>}
-        </div>
-        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 8, width: "100%" }}>
-          <div style={{ flex: 1, display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden", minHeight: isMobile ? 44 : undefined, width: "100%" }}>
-            <input type={showKey ? "text" : "password"} value={apiKey} onChange={(e) => saveKey(e.target.value)} placeholder="sk-ant-api03-..."
-              style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: isMobile ? "12px 14px" : "8px 12px", fontSize: isMobile ? 15 : 13, fontFamily: "monospace" }} />
-            <button type="button" onClick={() => setShowKey(!showKey)} style={{ padding: isMobile ? "12px 16px" : "8px 12px", minHeight: isMobile ? 44 : undefined, background: "transparent", border: "none", color: "#475569", cursor: "pointer", fontSize: isMobile ? 13 : 11 }}>{showKey ? "Hide" : "Show"}</button>
-          </div>
-        </div>
-        <div style={{ fontSize: isMobile ? 12 : 11, color: "#334155", marginTop: 6 }}>Your key is stored only in your browser. Get yours at console.anthropic.com</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 18 }}>
+        {modeTabs.map((m) => {
+          const active = walkMode === m.id;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setWalkMode(m.id)}
+              style={{
+                ...tabBtnBase,
+                background: active ? "linear-gradient(135deg, #1e3a5f, #0f172a)" : "#0a0f1a",
+                color: active ? "#e2e8f0" : "#64748b",
+                borderColor: active ? "#3b82f6" : "#1e293b",
+              }}
+            >
+              {m.label}
+            </button>
+          );
+        })}
       </div>
+
+      {pendingJobs.length > 0 && (
+        <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 14, marginBottom: 18 }}>
+          <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Pending unsynced recordings</div>
+          {pendingJobs.map((job) => (
+            <div key={job.id} style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: 10, padding: "10px 0", borderTop: "1px solid #0f172a" }}>
+              <div style={{ flex: 1, fontSize: 13, color: "#cbd5e1" }}>{job.label}</div>
+              <button
+                type="button"
+                disabled={!navigator.onLine || syncingJobId === job.id}
+                onClick={() => void syncPendingJob(job)}
+                style={{
+                  minHeight: 60,
+                  borderRadius: 10,
+                  border: "none",
+                  fontWeight: 700,
+                  fontFamily: "'Syne', sans-serif",
+                  cursor: !navigator.onLine || syncingJobId === job.id ? "not-allowed" : "pointer",
+                  fontSize: 14,
+                  padding: "0 20px",
+                  background: navigator.onLine ? "#1d4ed8" : "#334155",
+                  color: "#fff",
+                  opacity: navigator.onLine ? 1 : 0.5,
+                }}
+              >
+                {syncingJobId === job.id ? "Syncing…" : "Sync"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {walkMode === "photos" && (
+        <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>Anthropic API Key</div>
+            {apiKey && <div style={{ fontSize: 11, color: "#22c55e" }}>✓ Key saved</div>}
+          </div>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 8, width: "100%" }}>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden", minHeight: isMobile ? 44 : undefined, width: "100%" }}>
+              <input type={showKey ? "text" : "password"} value={apiKey} onChange={(e) => saveKey(e.target.value)} placeholder="sk-ant-api03-..."
+                style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: isMobile ? "12px 14px" : "8px 12px", fontSize: isMobile ? 15 : 13, fontFamily: "monospace" }} />
+              <button type="button" onClick={() => setShowKey(!showKey)} style={{ padding: isMobile ? "12px 16px" : "8px 12px", minHeight: isMobile ? 44 : undefined, background: "transparent", border: "none", color: "#475569", cursor: "pointer", fontSize: isMobile ? 13 : 11 }}>{showKey ? "Hide" : "Show"}</button>
+            </div>
+          </div>
+          <div style={{ fontSize: isMobile ? 12 : 11, color: "#334155", marginTop: 6 }}>Your key is stored only in your browser. Get yours at console.anthropic.com</div>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 340px", gap: isMobile ? 20 : 24 }}>
         <div>
@@ -453,33 +589,65 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false }
             {buildYearInput < 1978 && <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 6, padding: "10px 14px", fontSize: isMobile ? 12 : 11, color: "#f59e0b", lineHeight: 1.45 }}>⚠ Pre-1978 build — AI will flag lead paint risk automatically</div>}
           </div>
 
-          <div onClick={() => fileRef.current?.click()} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handlePhotos(e.dataTransfer.files); }}
-            style={{ border: "2px dashed #1e293b", borderRadius: 8, padding: isMobile ? "28px 16px" : "32px 20px", textAlign: "center", cursor: "pointer", marginBottom: 16, background: "#0a0f1a", minHeight: isMobile ? 120 : undefined }}
-            onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#3b82f6")} onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#1e293b")}>
-            <div style={{ fontSize: 32, marginBottom: 10 }}>📸</div>
-            <div style={{ fontSize: isMobile ? 15 : 14, color: "#94a3b8", marginBottom: 4 }}>Drop property photos here or click to upload</div>
-            <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569" }}>Up to 8 photos · JPG, PNG, WEBP</div>
-            <input ref={fileRef} type="file" multiple accept="image/*" style={{ display: "none" }} onChange={(e) => e.target.files && handlePhotos(e.target.files)} />
-          </div>
+          {walkMode === "photos" && (
+            <>
+              <div onClick={() => fileRef.current?.click()} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handlePhotos(e.dataTransfer.files); }}
+                style={{ border: "2px dashed #1e293b", borderRadius: 8, padding: isMobile ? "28px 16px" : "32px 20px", textAlign: "center", cursor: "pointer", marginBottom: 16, background: "#0a0f1a", minHeight: isMobile ? 120 : undefined }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#3b82f6")} onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#1e293b")}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>📸</div>
+                <div style={{ fontSize: isMobile ? 15 : 14, color: "#94a3b8", marginBottom: 4 }}>Drop property photos here or click to upload</div>
+                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569" }}>Up to 8 photos · JPG, PNG, WEBP</div>
+                <input ref={fileRef} type="file" multiple accept="image/*" style={{ display: "none" }} onChange={(e) => e.target.files && handlePhotos(e.target.files)} />
+              </div>
 
-          {photos.length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
-              {photos.map((p) => (
-                <div key={p.id} style={{ position: "relative", borderRadius: 6, overflow: "hidden", aspectRatio: "1", background: "#0a0f1a", border: "1px solid #1e293b" }}>
-                  <img src={`data:${p.mediaType};base64,${p.base64}`} alt={p.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  <button onClick={() => setPhotos((prev) => prev.filter((x) => x.id !== p.id))} style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.7)", border: "none", color: "#f87171", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 12 }}>×</button>
+              {photos.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
+                  {photos.map((p) => (
+                    <div key={p.id} style={{ position: "relative", borderRadius: 6, overflow: "hidden", aspectRatio: "1", background: "#0a0f1a", border: "1px solid #1e293b" }}>
+                      <img src={`data:${p.mediaType};base64,${p.base64}`} alt={p.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <button onClick={() => setPhotos((prev) => prev.filter((x) => x.id !== p.id))} style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.7)", border: "none", color: "#f87171", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 12 }}>×</button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              <button type="button" onClick={analyze} disabled={analyzing || photos.length === 0 || !apiKey}
+                style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 15 : 14, fontWeight: 700, cursor: analyzing || photos.length === 0 || !apiKey ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
+                  background: analyzing || photos.length === 0 || !apiKey ? "#1e293b" : "linear-gradient(135deg, #7c3aed, #6d28d9)", opacity: analyzing || photos.length === 0 || !apiKey ? 0.5 : 1 }}>
+                {analyzing ? "🔍 Analyzing..." : `🤖 Analyze ${photos.length > 0 ? photos.length + " Photo" + (photos.length > 1 ? "s" : "") : "Photos"} with AI`}
+              </button>
+            </>
+          )}
+
+          {walkMode !== "photos" && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Voice trigger phrase</div>
+              <input
+                type="text"
+                value={triggerPhrase}
+                onChange={(e) => saveTriggerPhrase(e.target.value)}
+                placeholder="flag this"
+                style={{ width: "100%", boxSizing: "border-box", minHeight: 48, background: "#060b14", border: "1px solid #1e293b", borderRadius: 8, color: "#f1f5f9", padding: "12px 14px", fontSize: 15, marginBottom: 14 }}
+              />
+              <WalkthroughMediaRecorder
+                key={walkMode}
+                mode={walkMode as "audio" | "video" | "audiovideo"}
+                address={address}
+                buildYear={buildYearInput}
+                isMobile={isMobile}
+                supabase={supabase}
+                triggerPhrase={triggerPhrase}
+                onFindings={(f) => {
+                  setFindings(f);
+                  setSelectedFindings(new Set(f.map((_, i) => i)));
+                  setStatus(`Analysis complete — ${f.length} findings identified.`);
+                }}
+                onAnalyzing={setMediaAnalyzing}
+              />
             </div>
           )}
 
-          <button type="button" onClick={analyze} disabled={analyzing || photos.length === 0 || !apiKey}
-            style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 15 : 14, fontWeight: 700, cursor: analyzing || photos.length === 0 || !apiKey ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
-              background: analyzing || photos.length === 0 || !apiKey ? "#1e293b" : "linear-gradient(135deg, #7c3aed, #6d28d9)", opacity: analyzing || photos.length === 0 || !apiKey ? 0.5 : 1 }}>
-            {analyzing ? "🔍 Analyzing..." : `🤖 Analyze ${photos.length > 0 ? photos.length + " Photo" + (photos.length > 1 ? "s" : "") : "Photos"} with AI`}
-          </button>
-
-          {status && !analyzing && <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#22c55e", marginBottom: 12 }}>✓ {status}</div>}
+          {status && !analyzing && !mediaAnalyzing && <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#22c55e", marginBottom: 12 }}>✓ {status}</div>}
           {error && <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 12 }}>✗ {error}</div>}
 
           {findings.length > 0 && (
@@ -520,8 +688,8 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false }
           {findings.length === 0 && (
             <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16 }}>
               <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12, fontWeight: 700, textTransform: "uppercase" }}>How It Works</div>
-              {[{ icon: "📸", text: "Upload photos of each room, exterior, roof, electrical panel, HVAC" }, { icon: "🤖", text: "Claude AI analyzes every image for repair needs and hazmat risks" }, { icon: "⚠", text: "Pre-1978 homes trigger lead paint warnings automatically" }, { icon: "📋", text: "Push findings directly to your Scope of Work with one click" }].map((item) => (
-                <div key={item.icon} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+              {howItWorksByMode[walkMode].map((item, idx) => (
+                <div key={idx} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
                   <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
                   <span style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>{item.text}</span>
                 </div>
@@ -542,12 +710,12 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false }
                   {hazmatFindings.map((f, i) => <div key={i} style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>• {f.description}</div>)}
                 </div>
               )}
-              <button type="button" onClick={handleAddToScope} disabled={selectedFindings.size === 0}
-                style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : 13, fontWeight: 700, cursor: selectedFindings.size === 0 ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
-                  background: selectedFindings.size === 0 ? "#1e293b" : "linear-gradient(135deg, #16a34a, #15803d)", opacity: selectedFindings.size === 0 ? 0.5 : 1 }}>
+              <button type="button" onClick={handleAddToScope} disabled={selectedFindings.size === 0 || analyzing || mediaAnalyzing}
+                style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : 13, fontWeight: 700, cursor: selectedFindings.size === 0 || analyzing || mediaAnalyzing ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
+                  background: selectedFindings.size === 0 || analyzing || mediaAnalyzing ? "#1e293b" : "linear-gradient(135deg, #16a34a, #15803d)", opacity: selectedFindings.size === 0 || analyzing || mediaAnalyzing ? 0.5 : 1 }}>
                 + Add {selectedFindings.size} Item{selectedFindings.size !== 1 ? "s" : ""} to Scope of Work
               </button>
-              <button type="button" onClick={() => { setFindings([]); setPhotos([]); setStatus(""); setSelectedFindings(new Set()); }}
+              <button type="button" onClick={() => { setFindings([]); if (walkMode === "photos") setPhotos([]); setStatus(""); setSelectedFindings(new Set()); }}
                 style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#475569", padding: isMobile ? "14px 16px" : "10px 0", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 14 : 12, cursor: "pointer" }}>
                 Clear & Start New Analysis
               </button>
