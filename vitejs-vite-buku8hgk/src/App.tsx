@@ -1,4 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// ─── Supabase Client ──────────────────────────────────────────────────────────
+const SUPABASE_URL = "https://gnygraconlpwzvllayoq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdueWdyYWNvbmxwd3p2bGxheW9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NjA4NzQsImV4cCI6MjA5MTUzNjg3NH0.fKZ0G0Q6jGxGrX-onuKmklB1HeSuxyWI3c3lkftOvkg";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DealInputs {
@@ -151,7 +157,6 @@ function calculateCompARV(comps: Comp[], subjectSqft: number) {
   return { weightedArv, avgPpsf, strongAvg, allAvg };
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 const fmtPct = (n: number) => `${n.toFixed(1)}%`;
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -179,6 +184,88 @@ const PRIORITY_STYLES = {
   important: { color: "#f59e0b", bg: "#2d2000", border: "#d97706", label: "Important" },
   optional: { color: "#60a5fa", bg: "#0c1a2e", border: "#3b82f6", label: "Optional" },
 };
+
+// ─── Auth Screen ──────────────────────────────────────────────────────────────
+function AuthScreen({ onAuth }: { onAuth: () => void }) {
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const handleSubmit = async () => {
+    if (!email || !password) { setError("Please enter email and password."); return; }
+    setLoading(true); setError(""); setMessage("");
+    try {
+      if (mode === "signup") {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        setMessage("Account created! Please check your email to verify your account, then sign in below.");
+        setMode("signin");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        onAuth();
+      }
+    } catch (err: any) {
+      setError(err.message || "Authentication failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif" }}>
+      <div style={{ width: 400, padding: 40, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12 }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{ fontSize: 28, fontWeight: 800, color: "#f1f5f9", marginBottom: 6 }}>
+            FLIP<span style={{ color: "#3b82f6" }}>LOGIC</span> AI
+          </div>
+          <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.15em" }}>COMMAND CENTER · DEAL ANALYZER</div>
+        </div>
+
+        <div style={{ display: "flex", marginBottom: 24, background: "#060b14", borderRadius: 8, padding: 4 }}>
+          {(["signin", "signup"] as const).map((m) => (
+            <button key={m} onClick={() => { setMode(m); setError(""); setMessage(""); }}
+              style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.05em",
+                background: mode === m ? "#1d4ed8" : "transparent", color: mode === m ? "#fff" : "#475569" }}>
+              {m === "signin" ? "SIGN IN" : "CREATE ACCOUNT"}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Email</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            placeholder="you@example.com"
+            style={{ width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+        </div>
+
+        <div style={{ marginBottom: 24 }}>
+          <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Password</label>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            placeholder="••••••••"
+            style={{ width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+        </div>
+
+        {error && <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 14 }}>{error}</div>}
+        {message && <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#22c55e", marginBottom: 14 }}>{message}</div>}
+
+        <button onClick={handleSubmit} disabled={loading}
+          style={{ width: "100%", background: loading ? "#1e293b" : "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: "12px 0", fontSize: 13, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", letterSpacing: "0.05em" }}>
+          {loading ? "Please wait..." : mode === "signin" ? "SIGN IN" : "CREATE ACCOUNT"}
+        </button>
+
+        <div style={{ marginTop: 20, fontSize: 11, color: "#334155", textAlign: "center", lineHeight: 1.6 }}>
+          Your deals are encrypted and synced across all your devices.
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 function InputField({ label, value, onChange, prefix = "$", suffix = "" }: {
@@ -223,9 +310,7 @@ function ScenarioRow({ scenario, inputs }: { scenario: Scenario; inputs: DealInp
 
 // ─── AI WALKTHROUGH TAB ───────────────────────────────────────────────────────
 function AIWalkthroughTab({ address, buildYear, onAddToScope }: {
-  address: string;
-  buildYear: number;
-  onAddToScope: (items: ScopeItem[]) => void;
+  address: string; buildYear: number; onAddToScope: (items: ScopeItem[]) => void;
 }) {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem("fliplogic_api_key") || "");
   const [showKey, setShowKey] = useState(false);
@@ -238,10 +323,7 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope }: {
   const [buildYearInput, setBuildYearInput] = useState(buildYear || 1970);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const saveKey = (key: string) => {
-    setApiKey(key);
-    localStorage.setItem("fliplogic_api_key", key);
-  };
+  const saveKey = (key: string) => { setApiKey(key); localStorage.setItem("fliplogic_api_key", key); };
 
   const handlePhotos = async (files: FileList) => {
     const newPhotos: WalkthroughPhoto[] = [];
@@ -252,13 +334,7 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope }: {
         reader.onload = () => res((reader.result as string).split(",")[1]);
         reader.readAsDataURL(file);
       });
-      newPhotos.push({
-        id: uid(),
-        base64,
-        mediaType: file.type,
-        label: file.name,
-        analyzed: false,
-      });
+      newPhotos.push({ id: uid(), base64, mediaType: file.type, label: file.name, analyzed: false });
     }
     setPhotos((prev) => [...prev, ...newPhotos].slice(0, 8));
   };
@@ -266,117 +342,42 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope }: {
   const analyze = async () => {
     if (!apiKey.trim()) { setError("Please enter your Anthropic API key first."); return; }
     if (photos.length === 0) { setError("Please upload at least one property photo."); return; }
-
-    setAnalyzing(true);
-    setError("");
-    setFindings([]);
-    setSelectedFindings(new Set());
+    setAnalyzing(true); setError(""); setFindings([]); setSelectedFindings(new Set());
     setStatus("Sending photos to Claude AI for analysis...");
-
     try {
-      const imageContent = photos.map((p) => ({
-        type: "image",
-        source: { type: "base64", media_type: p.mediaType, data: p.base64 },
-      }));
-
+      const imageContent = photos.map((p) => ({ type: "image", source: { type: "base64", media_type: p.mediaType, data: p.base64 } }));
       const hazmatContext = buildYearInput < 1978
-        ? `IMPORTANT: This property was built in ${buildYearInput}, before 1978. Assume lead paint is LIKELY present in all painted surfaces until tested. Flag this as a critical hazmat item.`
+        ? `IMPORTANT: This property was built in ${buildYearInput}, before 1978. Assume lead paint is LIKELY present. Flag as critical hazmat.`
         : `This property was built in ${buildYearInput}.`;
-
-      const prompt = `You are an expert real estate inspector and rehab estimator analyzing property photos for a fix-and-flip investor.
-
-${hazmatContext}
-
-Analyze all ${photos.length} photo(s) carefully. Identify every repair, renovation, or remediation item you can see or reasonably infer.
-
-For each finding, respond ONLY with a JSON array. No preamble, no explanation, just the raw JSON array.
-
-Format:
-[
-  {
-    "category": "one of: Foundation & Structure, Roof, Exterior, Windows & Doors, Plumbing, Electrical, HVAC, Insulation, Drywall & Paint, Flooring, Kitchen, Bathrooms, Landscaping, Permits & Fees, Cleanup & Hauling, Other",
-    "description": "clear concise description of the work needed",
-    "priority": "critical | important | optional",
-    "estimatedCost": number (realistic US market cost in dollars, no symbols),
-    "notes": "specific observations, materials spotted, hazmat flags, severity notes",
-    "hazmat": true or false
-  }
-]
-
-Priority rules:
-- critical = safety hazard, structural, deal-killer, or hazmat (lead, asbestos, mold)
-- important = necessary for resale value or financing
-- optional = cosmetic upgrades that improve value but aren't required
-
-Be thorough. A good inspector catches things others miss. Flag Federal Pacific or Zinsco electrical panels as critical. Flag popcorn ceilings in pre-1980 homes as potential asbestos. Flag any visible water damage, foundation cracks, or signs of pest damage.
-
-Return ONLY the JSON array.`;
-
+      const prompt = `You are an expert real estate inspector analyzing property photos for a fix-and-flip investor.\n\n${hazmatContext}\n\nAnalyze all ${photos.length} photo(s). Identify every repair or renovation item. Respond ONLY with a JSON array:\n[\n  {\n    "category": "one of the standard categories",\n    "description": "clear description of work needed",\n    "priority": "critical | important | optional",\n    "estimatedCost": number,\n    "notes": "specific observations",\n    "hazmat": true or false\n  }\n]\n\nReturn ONLY the JSON array.`;
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey.trim(),
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-opus-4-6",
-          max_tokens: 2000,
-          messages: [{
-            role: "user",
-            content: [
-              ...imageContent,
-              { type: "text", text: prompt },
-            ],
-          }],
-        }),
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey.trim(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({ model: "claude-opus-4-6", max_tokens: 2000, messages: [{ role: "user", content: [...imageContent, { type: "text", text: prompt }] }] }),
       });
-
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error?.message || `API error: ${response.status}`);
-      }
-
+      if (!response.ok) { const err = await response.json(); throw new Error(err.error?.message || `API error: ${response.status}`); }
       const data = await response.json();
       const text = data.content[0]?.text || "";
-
-      // Parse JSON — strip any markdown fences if present
       const clean = text.replace(/```json|```/g, "").trim();
       const parsed: AIFinding[] = JSON.parse(clean);
-
       setFindings(parsed);
       setSelectedFindings(new Set(parsed.map((_, i) => i)));
-      setStatus(`Analysis complete — ${parsed.length} findings identified across ${photos.length} photo(s).`);
+      setStatus(`Analysis complete — ${parsed.length} findings identified.`);
     } catch (err: any) {
-      setError(err.message || "Analysis failed. Check your API key and try again.");
-      setStatus("");
+      setError(err.message || "Analysis failed.");
     } finally {
       setAnalyzing(false);
     }
   };
 
   const toggleFinding = (i: number) => {
-    setSelectedFindings((prev) => {
-      const next = new Set(prev);
-      next.has(i) ? next.delete(i) : next.add(i);
-      return next;
-    });
+    setSelectedFindings((prev) => { const next = new Set(prev); next.has(i) ? next.delete(i) : next.add(i); return next; });
   };
 
   const handleAddToScope = () => {
     const items: ScopeItem[] = Array.from(selectedFindings).map((i) => {
       const f = findings[i];
-      return {
-        id: uid(),
-        category: f.category,
-        description: f.description,
-        quantity: 1,
-        unit: "lot",
-        myEstimate: f.estimatedCost,
-        notes: f.notes + (f.hazmat ? " ⚠ HAZMAT FLAG" : ""),
-        priority: f.priority,
-      };
+      return { id: uid(), category: f.category, description: f.description, quantity: 1, unit: "lot", myEstimate: f.estimatedCost, notes: f.notes + (f.hazmat ? " ⚠ HAZMAT FLAG" : ""), priority: f.priority };
     });
     onAddToScope(items);
   };
@@ -386,7 +387,6 @@ Return ONLY the JSON array.`;
 
   return (
     <div>
-      {/* API Key Section */}
       <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, marginBottom: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
           <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>Anthropic API Key</div>
@@ -394,28 +394,16 @@ Return ONLY the JSON array.`;
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <div style={{ flex: 1, display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden" }}>
-            <input
-              type={showKey ? "text" : "password"}
-              value={apiKey}
-              onChange={(e) => saveKey(e.target.value)}
-              placeholder="sk-ant-api03-..."
-              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: "8px 12px", fontSize: 13, fontFamily: "monospace" }}
-            />
-            <button onClick={() => setShowKey(!showKey)}
-              style={{ padding: "8px 12px", background: "transparent", border: "none", color: "#475569", cursor: "pointer", fontSize: 11 }}>
-              {showKey ? "Hide" : "Show"}
-            </button>
+            <input type={showKey ? "text" : "password"} value={apiKey} onChange={(e) => saveKey(e.target.value)} placeholder="sk-ant-api03-..."
+              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: "8px 12px", fontSize: 13, fontFamily: "monospace" }} />
+            <button onClick={() => setShowKey(!showKey)} style={{ padding: "8px 12px", background: "transparent", border: "none", color: "#475569", cursor: "pointer", fontSize: 11 }}>{showKey ? "Hide" : "Show"}</button>
           </div>
         </div>
-        <div style={{ fontSize: 11, color: "#334155", marginTop: 6 }}>
-          Your key is stored only in your browser. Never shared. Get yours at console.anthropic.com
-        </div>
+        <div style={{ fontSize: 11, color: "#334155", marginTop: 6 }}>Your key is stored only in your browser. Get yours at console.anthropic.com</div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 24 }}>
-        {/* Left: Upload + Photos */}
         <div>
-          {/* Build Year */}
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 14 }}>
             <div>
               <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Property Build Year</div>
@@ -424,123 +412,55 @@ Return ONLY the JSON array.`;
                   style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: "8px 10px", fontSize: 14, fontFamily: "monospace" }} />
               </div>
             </div>
-            {buildYearInput < 1978 && (
-              <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 6, padding: "8px 14px", fontSize: 11, color: "#f59e0b" }}>
-                ⚠ Pre-1978 build — AI will flag lead paint risk automatically
-              </div>
-            )}
-            {buildYearInput < 1985 && buildYearInput >= 1978 && (
-              <div style={{ background: "#0c1a2e", border: "1px solid #3b82f6", borderRadius: 6, padding: "8px 14px", fontSize: 11, color: "#60a5fa" }}>
-                ℹ Pre-1985 — AI will watch for asbestos indicators
-              </div>
-            )}
+            {buildYearInput < 1978 && <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 6, padding: "8px 14px", fontSize: 11, color: "#f59e0b" }}>⚠ Pre-1978 build — AI will flag lead paint risk automatically</div>}
           </div>
 
-          {/* Upload Zone */}
-          <div
-            onClick={() => fileRef.current?.click()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); handlePhotos(e.dataTransfer.files); }}
-            style={{
-              border: "2px dashed #1e293b", borderRadius: 8, padding: "32px 20px",
-              textAlign: "center", cursor: "pointer", marginBottom: 16,
-              background: "#0a0f1a", transition: "border-color 0.2s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#3b82f6")}
-            onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#1e293b")}
-          >
+          <div onClick={() => fileRef.current?.click()} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handlePhotos(e.dataTransfer.files); }}
+            style={{ border: "2px dashed #1e293b", borderRadius: 8, padding: "32px 20px", textAlign: "center", cursor: "pointer", marginBottom: 16, background: "#0a0f1a" }}
+            onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#3b82f6")} onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#1e293b")}>
             <div style={{ fontSize: 32, marginBottom: 10 }}>📸</div>
             <div style={{ fontSize: 14, color: "#94a3b8", marginBottom: 4 }}>Drop property photos here or click to upload</div>
-            <div style={{ fontSize: 11, color: "#475569" }}>Up to 8 photos · JPG, PNG, WEBP · Interior & exterior</div>
-            <input ref={fileRef} type="file" multiple accept="image/*" style={{ display: "none" }}
-              onChange={(e) => e.target.files && handlePhotos(e.target.files)} />
+            <div style={{ fontSize: 11, color: "#475569" }}>Up to 8 photos · JPG, PNG, WEBP</div>
+            <input ref={fileRef} type="file" multiple accept="image/*" style={{ display: "none" }} onChange={(e) => e.target.files && handlePhotos(e.target.files)} />
           </div>
 
-          {/* Photo Grid */}
           {photos.length > 0 && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
               {photos.map((p) => (
                 <div key={p.id} style={{ position: "relative", borderRadius: 6, overflow: "hidden", aspectRatio: "1", background: "#0a0f1a", border: "1px solid #1e293b" }}>
-                  <img src={`data:${p.mediaType};base64,${p.base64}`} alt={p.label}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  <button onClick={() => setPhotos((prev) => prev.filter((x) => x.id !== p.id))}
-                    style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.7)", border: "none", color: "#f87171", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    ×
-                  </button>
-                  <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.7)", padding: "3px 6px", fontSize: 9, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {p.label}
-                  </div>
+                  <img src={`data:${p.mediaType};base64,${p.base64}`} alt={p.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <button onClick={() => setPhotos((prev) => prev.filter((x) => x.id !== p.id))} style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.7)", border: "none", color: "#f87171", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 12 }}>×</button>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Analyze Button */}
           <button onClick={analyze} disabled={analyzing || photos.length === 0 || !apiKey}
-            style={{
-              width: "100%", border: "none", borderRadius: 8, color: "#fff",
-              padding: "14px 0", fontSize: 14, fontWeight: 700, cursor: analyzing || photos.length === 0 || !apiKey ? "not-allowed" : "pointer",
-              fontFamily: "'Syne', sans-serif", letterSpacing: "0.05em", marginBottom: 8,
-              background: analyzing ? "#1e293b" : photos.length === 0 || !apiKey ? "#1e293b" : "linear-gradient(135deg, #7c3aed, #6d28d9)",
-              opacity: analyzing || photos.length === 0 || !apiKey ? 0.5 : 1,
-            }}>
+            style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: "14px 0", fontSize: 14, fontWeight: 700, cursor: analyzing || photos.length === 0 || !apiKey ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
+              background: analyzing || photos.length === 0 || !apiKey ? "#1e293b" : "linear-gradient(135deg, #7c3aed, #6d28d9)", opacity: analyzing || photos.length === 0 || !apiKey ? 0.5 : 1 }}>
             {analyzing ? "🔍 Analyzing..." : `🤖 Analyze ${photos.length > 0 ? photos.length + " Photo" + (photos.length > 1 ? "s" : "") : "Photos"} with AI`}
           </button>
 
-          {status && !analyzing && (
-            <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#22c55e", marginBottom: 12 }}>
-              ✓ {status}
-            </div>
-          )}
+          {status && !analyzing && <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#22c55e", marginBottom: 12 }}>✓ {status}</div>}
+          {error && <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 12 }}>✗ {error}</div>}
 
-          {analyzing && (
-            <div style={{ background: "#0c1a2e", border: "1px solid #3b82f6", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#60a5fa", marginBottom: 12 }}>
-              <span style={{ display: "inline-block", animation: "pulse 1.5s infinite" }}>🔍</span> Claude is analyzing your photos for repair items, hazmat risks, and cost estimates...
-            </div>
-          )}
-
-          {error && (
-            <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 12 }}>
-              ✗ {error}
-            </div>
-          )}
-
-          {/* Findings List */}
           {findings.length > 0 && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                  AI Findings — Select items to add to Scope
-                </div>
+                <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}>AI Findings — Select items to add to Scope</div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => setSelectedFindings(new Set(findings.map((_, i) => i)))}
-                    style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 4, color: "#94a3b8", padding: "4px 10px", fontSize: 11, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
-                    All
-                  </button>
-                  <button onClick={() => setSelectedFindings(new Set())}
-                    style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 4, color: "#94a3b8", padding: "4px 10px", fontSize: 11, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
-                    None
-                  </button>
+                  <button onClick={() => setSelectedFindings(new Set(findings.map((_, i) => i)))} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 4, color: "#94a3b8", padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>All</button>
+                  <button onClick={() => setSelectedFindings(new Set())} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 4, color: "#94a3b8", padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>None</button>
                 </div>
               </div>
-
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {findings.map((f, i) => {
-                  const p = PRIORITY_STYLES[f.priority];
-                  const selected = selectedFindings.has(i);
+                  const p = PRIORITY_STYLES[f.priority]; const selected = selectedFindings.has(i);
                   return (
-                    <div key={i} onClick={() => toggleFinding(i)}
-                      style={{
-                        background: selected ? "#0d1829" : "#0a0f1a",
-                        border: `1px solid ${selected ? p.border : "#1e293b"}`,
-                        borderRadius: 8, padding: 14, cursor: "pointer",
-                        transition: "all 0.15s",
-                      }}>
+                    <div key={i} onClick={() => toggleFinding(i)} style={{ background: selected ? "#0d1829" : "#0a0f1a", border: `1px solid ${selected ? p.border : "#1e293b"}`, borderRadius: 8, padding: 14, cursor: "pointer" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <div style={{ width: 16, height: 16, borderRadius: 3, border: `2px solid ${selected ? "#3b82f6" : "#334155"}`, background: selected ? "#3b82f6" : "transparent", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff" }}>
-                            {selected ? "✓" : ""}
-                          </div>
+                          <div style={{ width: 16, height: 16, borderRadius: 3, border: `2px solid ${selected ? "#3b82f6" : "#334155"}`, background: selected ? "#3b82f6" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff" }}>{selected ? "✓" : ""}</div>
                           {f.hazmat && <span style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 3, padding: "1px 6px", fontSize: 9, color: "#f59e0b", fontWeight: 700 }}>⚠ HAZMAT</span>}
                           <span style={{ background: p.bg, border: `1px solid ${p.border}`, borderRadius: 3, padding: "1px 6px", fontSize: 9, color: p.color, fontWeight: 700 }}>{p.label}</span>
                           <span style={{ fontSize: 11, color: "#60a5fa" }}>{f.category}</span>
@@ -557,92 +477,40 @@ Return ONLY the JSON array.`;
           )}
         </div>
 
-        {/* Right: Summary + Actions */}
         <div>
           <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>AI Analysis Summary</div>
-
-          {/* How it works */}
           {findings.length === 0 && (
-            <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, marginBottom: 14 }}>
-              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>How It Works</div>
-              {[
-                { icon: "📸", text: "Upload photos of each room, exterior, roof, electrical panel, HVAC, and any problem areas" },
-                { icon: "🤖", text: "Claude AI analyzes every image for repair needs, hazmat risks, and construction quality" },
-                { icon: "⚠", text: "Pre-1978 homes automatically trigger lead paint warnings. Popcorn ceilings flagged for asbestos" },
-                { icon: "📋", text: "Review findings, select what applies, and push directly to your Scope of Work with one click" },
-              ].map((item) => (
+            <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16 }}>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12, fontWeight: 700, textTransform: "uppercase" }}>How It Works</div>
+              {[{ icon: "📸", text: "Upload photos of each room, exterior, roof, electrical panel, HVAC" }, { icon: "🤖", text: "Claude AI analyzes every image for repair needs and hazmat risks" }, { icon: "⚠", text: "Pre-1978 homes trigger lead paint warnings automatically" }, { icon: "📋", text: "Push findings directly to your Scope of Work with one click" }].map((item) => (
                 <div key={item.icon} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
                   <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
                   <span style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>{item.text}</span>
                 </div>
               ))}
-              <div style={{ marginTop: 12, padding: "10px 12px", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6 }}>
-                <div style={{ fontSize: 10, color: "#475569", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Pro Tip</div>
-                <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
-                  Always photograph the electrical panel, under sinks, attic access, basement/crawlspace, and any visible cracks. These are where deal-killers hide.
-                </div>
-              </div>
             </div>
           )}
-
-          {/* Results Summary */}
           {findings.length > 0 && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
                 <MetricCard label="Total Findings" value={`${findings.length}`} sub="items identified" />
                 <MetricCard label="Selected Est." value={fmt(totalEstimate)} highlight />
-                <MetricCard label="Critical Items" value={`${findings.filter(f => f.priority === "critical").length}`} sub="need immediate attention" />
+                <MetricCard label="Critical Items" value={`${findings.filter(f => f.priority === "critical").length}`} sub="need attention" />
                 <MetricCard label="Hazmat Flags" value={`${hazmatFindings.length}`} sub={hazmatFindings.length > 0 ? "⚠ Review required" : "None detected"} />
               </div>
-
-              {/* Hazmat Alert */}
               {hazmatFindings.length > 0 && (
                 <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 8, padding: 14, marginBottom: 14 }}>
                   <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700, marginBottom: 8 }}>⚠ Hazmat Findings Detected</div>
-                  {hazmatFindings.map((f, i) => (
-                    <div key={i} style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>• {f.description}</div>
-                  ))}
-                  <div style={{ fontSize: 10, color: "#64748b", marginTop: 8, lineHeight: 1.5 }}>
-                    Always get a professional environmental assessment before closing. These items may affect financing.
-                  </div>
+                  {hazmatFindings.map((f, i) => <div key={i} style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>• {f.description}</div>)}
                 </div>
               )}
-
-              {/* Breakdown by priority */}
-              <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, marginBottom: 14 }}>
-                <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Cost by Priority</div>
-                {(["critical", "important", "optional"] as const).map((p) => {
-                  const pFindings = findings.filter((f) => f.priority === p);
-                  const pTotal = pFindings.reduce((s, f) => s + f.estimatedCost, 0);
-                  if (pFindings.length === 0) return null;
-                  return (
-                    <div key={p} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #0f172a" }}>
-                      <span style={{ fontSize: 12, color: PRIORITY_STYLES[p].color }}>● {PRIORITY_STYLES[p].label} ({pFindings.length})</span>
-                      <span style={{ fontSize: 12, fontFamily: "monospace", color: "#f1f5f9" }}>{fmt(pTotal)}</span>
-                    </div>
-                  );
-                })}
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 0" }}>
-                  <span style={{ fontSize: 13, color: "#f1f5f9", fontWeight: 700 }}>AI Total Estimate</span>
-                  <span style={{ fontSize: 16, fontFamily: "monospace", color: "#22c55e", fontWeight: 700 }}>{fmt(findings.reduce((s, f) => s + f.estimatedCost, 0))}</span>
-                </div>
-              </div>
-
-              {/* Add to Scope Button */}
               <button onClick={handleAddToScope} disabled={selectedFindings.size === 0}
-                style={{
-                  width: "100%", border: "none", borderRadius: 8, color: "#fff",
-                  padding: "14px 0", fontSize: 13, fontWeight: 700,
-                  cursor: selectedFindings.size === 0 ? "not-allowed" : "pointer",
-                  fontFamily: "'Syne', sans-serif", letterSpacing: "0.05em", marginBottom: 8,
-                  background: selectedFindings.size === 0 ? "#1e293b" : "linear-gradient(135deg, #16a34a, #15803d)",
-                  opacity: selectedFindings.size === 0 ? 0.5 : 1,
-                }}>
+                style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: "14px 0", fontSize: 13, fontWeight: 700, cursor: selectedFindings.size === 0 ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
+                  background: selectedFindings.size === 0 ? "#1e293b" : "linear-gradient(135deg, #16a34a, #15803d)", opacity: selectedFindings.size === 0 ? 0.5 : 1 }}>
                 + Add {selectedFindings.size} Item{selectedFindings.size !== 1 ? "s" : ""} to Scope of Work
               </button>
-
               <button onClick={() => { setFindings([]); setPhotos([]); setStatus(""); setSelectedFindings(new Set()); }}
-                style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#475569", padding: "10px 0", fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+                style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#475569", padding: "10px 0", fontSize: 12, cursor: "pointer" }}>
                 Clear & Start New Analysis
               </button>
             </>
@@ -724,9 +592,7 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
             <div style={{ fontSize: 10, color: "#475569" }}>{Math.abs(arvDiff) <= 5 ? "✓ On target" : arvDiff > 0 ? "⚠ You're high" : "⚠ You're low"}</div>
           </div>
         )}
-        {weightedArv > 0 && (
-          <button onClick={() => onApplyArv(Math.round(weightedArv))} style={{ background: "#1d4ed8", border: "none", borderRadius: 6, color: "#fff", padding: "8px 14px", fontSize: 11, cursor: "pointer", fontWeight: 700, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>Apply to Deal</button>
-        )}
+        {weightedArv > 0 && <button onClick={() => onApplyArv(Math.round(weightedArv))} style={{ background: "#1d4ed8", border: "none", borderRadius: 6, color: "#fff", padding: "8px 14px", fontSize: 11, cursor: "pointer", fontWeight: 700, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>Apply to Deal</button>}
       </div>
       {validComps.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
@@ -781,12 +647,12 @@ function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete }: {
     @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
     <div class="header"><div><div class="brand">FLIP<span>LOGIC</span> AI</div><div style="font-size:9px;color:#64748b;letter-spacing:1px;text-transform:uppercase;margin-top:2px">Blind Scope of Work</div></div>
     <div style="text-align:right"><div style="font-size:16px;font-weight:700;color:#1e3a5f">SCOPE OF WORK</div><div style="font-size:10px;color:#64748b">Contractor Bid Request</div><div style="font-size:10px;color:#94a3b8;margin-top:3px">${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</div></div></div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:16px"><strong>${address||"Property Address"}</strong><br><span style="font-size:10px;color:#64748b">Please review the scope below and provide your itemized bid for each line item.</span></div>
-    <div class="notice">⚠ BLIND BID NOTICE: Budget estimates have been intentionally removed. Please provide your honest market-rate pricing based solely on the scope of work described.</div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:16px"><strong>${address||"Property Address"}</strong></div>
+    <div class="notice">⚠ BLIND BID NOTICE: Budget estimates have been intentionally removed. Please provide your honest market-rate pricing.</div>
     ${grouped.map(g=>`<div class="section-title">${g.cat}</div><table><thead><tr><th style="width:40%">Description</th><th>Qty</th><th>Unit</th><th>Priority</th><th>Notes</th><th style="width:120px">Your Bid ($)</th></tr></thead><tbody>${g.items.map(item=>`<tr><td>${item.description||"—"}</td><td style="text-align:center">${item.quantity}</td><td>${item.unit}</td><td class="p-${item.priority}">${item.priority.charAt(0).toUpperCase()+item.priority.slice(1)}</td><td style="color:#64748b;font-style:italic">${item.notes||""}</td><td><div class="bid-box">$____________</div></td></tr>`).join("")}</tbody></table>`).join("")}
     <div style="margin-top:20px;border-top:2px solid #1e3a5f;padding-top:12px"><table><tr style="background:#f8fafc"><td colspan="5" style="font-size:13px;padding:10px 8px;font-weight:700">TOTAL BID</td><td style="padding:10px 8px"><div class="bid-box" style="border:2px solid #1e3a5f;font-weight:700;font-size:13px;color:#1e3a5f">$____________</div></td></tr></table></div>
     <div class="contractor-box"><div style="font-size:10px;font-weight:700;color:#1e3a5f;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Contractor Information</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:11px"><div>Company: ____________________________</div><div>License #: ____________________________</div><div>Contact: ____________________________</div><div>Phone: ____________________________</div><div>Email: ____________________________</div><div>Date: ____________________________</div></div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:11px"><div>Company: ____________________________</div><div>License #: ____________________________</div><div>Contact: ____________________________</div><div>Phone: ____________________________</div></div></div>
     <div class="footer"><span>FlipLogic AI · Blind SOW · ${new Date().toLocaleDateString()}</span><span>${address||""}</span></div>
     </body></html>`);
     pw.document.close();
@@ -800,11 +666,7 @@ function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete }: {
           <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", textTransform: "uppercase" }}>Scope Items ({scopeItems.length})</div>
           <button onClick={onAdd} style={{ background: "#1d4ed8", border: "none", borderRadius: 6, color: "#fff", padding: "8px 16px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>+ Add Item</button>
         </div>
-        {scopeItems.length === 0 && (
-          <div style={{ background: "#0a0f1a", border: "1px dashed #1e293b", borderRadius: 8, padding: 40, textAlign: "center", color: "#334155", fontSize: 13 }}>
-            No scope items yet. Use the AI Walkthrough tab to auto-populate, or click "+ Add Item" to add manually.
-          </div>
-        )}
+        {scopeItems.length === 0 && <div style={{ background: "#0a0f1a", border: "1px dashed #1e293b", borderRadius: 8, padding: 40, textAlign: "center", color: "#334155", fontSize: 13 }}>No scope items yet. Use the AI Walkthrough tab to auto-populate, or click "+ Add Item".</div>}
         {byCategory.map((group) => (
           <div key={group.cat} style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 11, color: "#3b82f6", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10, display: "flex", justifyContent: "space-between" }}>
@@ -878,26 +740,6 @@ function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete }: {
             <span style={{ fontSize: 18, fontFamily: "monospace", color: "#22c55e", fontWeight: 700 }}>{fmt(totalEstimate)}</span>
           </div>
         </div>
-        {byCategory.length > 0 && (
-          <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, marginBottom: 14 }}>
-            <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>By Category</div>
-            {byCategory.map(g => {
-              const t = g.items.reduce((s, i) => s + i.myEstimate, 0);
-              const pct = totalEstimate > 0 ? (t / totalEstimate) * 100 : 0;
-              return (
-                <div key={g.cat} style={{ marginBottom: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                    <span style={{ fontSize: 11, color: "#94a3b8" }}>{g.cat}</span>
-                    <span style={{ fontSize: 11, fontFamily: "monospace", color: "#f1f5f9" }}>{fmt(t)}</span>
-                  </div>
-                  <div style={{ background: "#1e293b", borderRadius: 2, height: 4, overflow: "hidden" }}>
-                    <div style={{ width: `${pct}%`, height: "100%", background: "#3b82f6", borderRadius: 2 }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
         <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 8, padding: 14, marginBottom: 14 }}>
           <div style={{ fontSize: 11, color: "#f59e0b", fontWeight: 700, marginBottom: 6 }}>🔒 Blind Export</div>
           <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.6 }}>Your estimates are hidden from contractors. They bid blind — no anchoring to your numbers.</div>
@@ -905,7 +747,6 @@ function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete }: {
         <button onClick={handlePrintBlind} style={{ width: "100%", background: "linear-gradient(135deg, #d97706, #b45309)", border: "none", borderRadius: 8, color: "#fff", padding: "14px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8 }}>
           🖨 PRINT BLIND SOW
         </button>
-        <div style={{ fontSize: 11, color: "#334155", textAlign: "center" }}>Contractors bid blind — no anchoring</div>
       </div>
     </div>
   );
@@ -926,7 +767,6 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo }: {
     <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;color:#1a202c;font-size:11px;padding:40px;max-width:800px;margin:0 auto}
     .brand{font-size:20px;font-weight:700;color:#1e3a5f}.brand span{color:#2563eb}
     .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #1e3a5f}
-    .property{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:20px}
     .st{font-size:10px;font-weight:700;color:#1e3a5f;letter-spacing:1px;text-transform:uppercase;margin:18px 0 10px;padding-bottom:6px;border-bottom:1px solid #e2e8f0}
     .mg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
     .mb{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px}
@@ -940,13 +780,12 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo }: {
     .sg{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr 80px;gap:6px}.sh{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#64748b;padding:6px 10px;background:#f8fafc}.sr{padding:7px 10px;border-bottom:1px solid #f1f5f9;font-size:11px;font-family:monospace}
     .sb{padding:3px 8px;border-radius:3px;font-size:9px;font-weight:700}.sH{background:#dcfce7;color:#16a34a}.sW{background:#fef3c7;color:#d97706}.sC{background:#dbeafe;color:#1d4ed8}.sD{background:#fee2e2;color:#dc2626}
     .footer{margin-top:24px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
-    .disc{font-size:9px;color:#94a3b8;font-style:italic;margin-top:10px;line-height:1.5}
     @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
     <div class="header">
       <div><div class="brand">FLIP<span>LOGIC</span> AI</div>${lenderInfo.investorName?`<div style="margin-top:8px;font-size:11px;font-weight:600">${lenderInfo.investorName}${lenderInfo.investorCompany?` · ${lenderInfo.investorCompany}`:""}</div>`:""}</div>
       <div style="text-align:right"><div style="font-size:16px;font-weight:700;color:#1e3a5f">LENDER PACKET</div>${lenderInfo.lenderName?`<div style="font-size:10px;color:#1d4ed8;font-weight:600;margin-top:4px">For: ${lenderInfo.lenderName}</div>`:""}<div style="font-size:10px;color:#94a3b8;margin-top:3px">${new Date().toLocaleDateString()}</div></div>
     </div>
-    <div class="property"><strong style="font-size:13px">${inputs.propertyAddress||"Property Address"}</strong><br><span style="font-size:10px;color:#64748b">Fix &amp; Flip · Hold: ${inputs.holdingMonths} months</span></div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:16px"><strong style="font-size:13px">${inputs.propertyAddress||"Property Address"}</strong></div>
     <div class="st">Executive Summary</div>
     <div class="mg">
       <div class="mb hi"><div class="ml">Net Profit</div><div class="mv">${fmt(metrics.netProfit)}</div></div>
@@ -959,8 +798,8 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo }: {
       <div class="mb"><div class="ml">Mo. Payment</div><div class="mv">${fmt(metrics.monthlyPayment)}</div></div>
     </div>
     <div class="tc">
-      <div><div class="st">Acquisition &amp; Financing</div><table class="dt"><tr><td>Purchase Price</td><td>${fmt(inputs.purchasePrice)}</td></tr><tr><td>Rehab Cost</td><td>${fmt(inputs.rehabCost)}</td></tr><tr><td>Closing Costs (Buy)</td><td>${fmt(inputs.closingCostsBuy)}</td></tr><tr><td>Total Project Cost</td><td>${fmt(metrics.totalProjectCost)}</td></tr><tr><td>Loan Amount</td><td>${fmt(inputs.loanAmount)}</td></tr><tr><td>Interest Rate</td><td>${fmtPct(inputs.interestRate)} APR</td></tr></table></div>
-      <div><div class="st">Profit &amp; Exit</div><table class="dt"><tr><td>ARV</td><td>${fmt(inputs.arv)}</td></tr><tr><td>Gross Profit</td><td>${fmt(metrics.grossProfit)}</td></tr><tr><td>Selling Costs</td><td>${fmt(inputs.closingCostsSell)}</td></tr><tr><td>Holding Costs</td><td>${fmt(metrics.totalHoldingCosts)}</td></tr><tr><td>Net Profit</td><td>${fmt(metrics.netProfit)}</td></tr><tr><td>ROI</td><td>${fmtPct(metrics.roi)}</td></tr></table></div>
+      <div><div class="st">Acquisition & Financing</div><table class="dt"><tr><td>Purchase Price</td><td>${fmt(inputs.purchasePrice)}</td></tr><tr><td>Rehab Cost</td><td>${fmt(inputs.rehabCost)}</td></tr><tr><td>Closing Costs (Buy)</td><td>${fmt(inputs.closingCostsBuy)}</td></tr><tr><td>Total Project Cost</td><td>${fmt(metrics.totalProjectCost)}</td></tr><tr><td>Loan Amount</td><td>${fmt(inputs.loanAmount)}</td></tr><tr><td>Interest Rate</td><td>${fmtPct(inputs.interestRate)} APR</td></tr></table></div>
+      <div><div class="st">Profit & Exit</div><table class="dt"><tr><td>ARV</td><td>${fmt(inputs.arv)}</td></tr><tr><td>Gross Profit</td><td>${fmt(metrics.grossProfit)}</td></tr><tr><td>Selling Costs</td><td>${fmt(inputs.closingCostsSell)}</td></tr><tr><td>Holding Costs</td><td>${fmt(metrics.totalHoldingCosts)}</td></tr><tr><td>Net Profit</td><td>${fmt(metrics.netProfit)}</td></tr><tr><td>ROI</td><td>${fmtPct(metrics.roi)}</td></tr></table></div>
     </div>
     ${deal.comps.filter(c=>c.salePrice>0).length>0?`<div class="st">Comparable Sales</div><table class="ct"><thead><tr><th>Address</th><th>Price</th><th>SqFt</th><th>$/SqFt</th><th>DOM</th><th>Weight</th></tr></thead><tbody>${deal.comps.filter(c=>c.salePrice>0).map(c=>`<tr><td>${c.address||"—"}</td><td style="font-weight:600">${fmt(c.salePrice)}</td><td>${c.sqft>0?c.sqft.toLocaleString():"—"}</td><td>${c.salePrice>0&&c.sqft>0?"$"+(c.salePrice/c.sqft).toFixed(0):"—"}</td><td>${c.daysOnMarket>0?c.daysOnMarket+"d":"—"}</td><td>${c.strength.charAt(0).toUpperCase()+c.strength.slice(1)}</td></tr>`).join("")}</tbody></table>${weightedArv>0?`<p style="margin-top:8px;font-size:11px">Weighted ARV: <strong style="color:#1d4ed8">${fmt(weightedArv)}</strong></p>`:""}`:""}
     <div style="margin-top:20px"><div class="st">Sensitivity Analysis</div>
@@ -968,7 +807,6 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo }: {
     ${SCENARIOS.map(s=>{const m2=calculateMetrics({...inputs,rehabCost:inputs.rehabCost*s.rehabMultiplier,arv:inputs.arv*s.arvMultiplier});const sc={HOT:"H",WARM:"W",COLD:"C",DEAD:"D"}[m2.dealScore];return`<div class="sr">${s.label}</div><div class="sr">${fmt(m2.netProfit)}</div><div class="sr">${fmtPct(m2.roi)}</div><div class="sr">${fmtPct(m2.ltv)}</div><div class="sr"><span class="sb s${sc}">${m2.dealScore}</span></div>`;}).join("")}</div></div>
     ${inputs.notes?`<div class="st">Field Notes</div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px;font-size:11px;line-height:1.6">${inputs.notes}</div>`:""}
     <div class="footer"><span>FlipLogic AI · ${new Date().toLocaleDateString()}</span><span>${lenderInfo.investorName||""}</span></div>
-    <div class="disc">Informational purposes only. All projections are estimates. Not investment or legal advice.</div>
     </body></html>`);
     pw.document.close();
     setTimeout(() => pw.print(), 500);
@@ -1020,9 +858,6 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo }: {
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 10, color: "#94a3b8", textAlign: "center", padding: "16px 0 0", borderTop: "1px solid #e2e8f0", marginTop: 14 }}>
-            Full report includes comps, stress test, field notes, and scope summary
-          </div>
         </div>
       </div>
     </div>
@@ -1030,8 +865,9 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo }: {
 }
 
 // ─── Deals Sidebar ────────────────────────────────────────────────────────────
-function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete }: {
+function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmail, onSignOut, syncing }: {
   deals: Deal[]; activeDealId: string; onSelect: (id: string) => void; onNew: () => void; onDelete: (id: string) => void;
+  userEmail: string; onSignOut: () => void; syncing: boolean;
 }) {
   return (
     <div style={{ width: 240, flexShrink: 0, background: "#060b14", borderRight: "1px solid #1e293b", display: "flex", flexDirection: "column", height: "100vh", position: "sticky", top: 0, overflowY: "auto" }}>
@@ -1060,7 +896,9 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete }: {
         })}
       </div>
       <div style={{ padding: "12px 14px", borderTop: "1px solid #1e293b" }}>
-        <div style={{ fontSize: 10, color: "#1e293b", textAlign: "center" }}>Saved locally in browser</div>
+        <div style={{ fontSize: 10, color: syncing ? "#f59e0b" : "#22c55e", marginBottom: 6, textAlign: "center" }}>{syncing ? "⟳ Saving..." : "✓ Synced to cloud"}</div>
+        <div style={{ fontSize: 10, color: "#334155", marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>{userEmail}</div>
+        <button onClick={onSignOut} style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 4, color: "#475569", padding: "6px 0", fontSize: 10, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>Sign Out</button>
       </div>
     </div>
   );
@@ -1068,31 +906,32 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete }: {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [activeDealId, setActiveDealId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"deal" | "ai" | "comps" | "rental" | "stress" | "scope" | "packet">("deal");
+  const [syncing, setSyncing] = useState(false);
+  const [dbLoading, setDbLoading] = useState(false);
+  const saveTimer = useRef<any>(null);
 
+  // ─── Auth listener ────────────────────────────────────────────────────────
   useEffect(() => {
-    const saved = localStorage.getItem("fliplogic_deals_v5");
-    if (saved) {
-      try {
-        const parsed: Deal[] = JSON.parse(saved);
-        if (parsed.length > 0) { setDeals(parsed); setActiveDealId(parsed[0].id); return; }
-      } catch (_) {}
-    }
-    const demo: Deal = {
-      id: uid(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      inputs: DEMO_INPUTS, comps: DEMO_COMPS, subjectSqft: 1480,
-      lenderInfo: { investorName: "Jane Investor", investorCompany: "JI Capital LLC", investorPhone: "(404) 555-0192", investorEmail: "jane@jicapital.com", lenderName: "First National Hard Money" },
-      scopeItems: DEMO_SCOPE,
-    };
-    setDeals([demo]);
-    setActiveDealId(demo.id);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
+  // ─── Load deals from Supabase ─────────────────────────────────────────────
   useEffect(() => {
-    if (deals.length > 0) localStorage.setItem("fliplogic_deals_v5", JSON.stringify(deals));
-  }, [deals]);
+    if (!user) return;
+    loadDeals();
+  }, [user]);
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -1101,29 +940,186 @@ export default function App() {
     document.head.appendChild(link);
   }, []);
 
+  const loadDeals = async () => {
+    setDbLoading(true);
+    try {
+      const { data: dealsData, error } = await supabase
+        .from("deals")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      if (!dealsData || dealsData.length === 0) {
+        // New user — create demo deal
+        await createDemoDeal();
+        setDbLoading(false);
+        return;
+      }
+
+      // Load comps and scope items for all deals
+      const dealIds = dealsData.map((d: any) => d.id);
+      const { data: compsData } = await supabase.from("comps").select("*").in("deal_id", dealIds);
+      const { data: scopeData } = await supabase.from("scope_items").select("*").in("deal_id", dealIds);
+
+      const assembled: Deal[] = dealsData.map((d: any) => ({
+        id: d.id,
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+        subjectSqft: d.subject_sqft || 0,
+        lenderInfo: d.lender_info || BLANK_LENDER_INFO,
+        inputs: {
+          propertyAddress: d.property_address || "",
+          purchasePrice: d.purchase_price || 0,
+          rehabCost: d.rehab_cost || 0,
+          arv: d.arv || 0,
+          loanAmount: d.loan_amount || 0,
+          interestRate: d.interest_rate || 11.5,
+          loanTermMonths: d.loan_term_months || 12,
+          holdingMonths: d.holding_months || 6,
+          closingCostsBuy: d.closing_costs_buy || 0,
+          closingCostsSell: d.closing_costs_sell || 0,
+          monthlyRent: d.monthly_rent || 0,
+          monthlyExpenses: d.monthly_expenses || 0,
+          notes: d.notes || "",
+          dealStatus: d.deal_status || "prospect",
+        },
+        comps: (compsData || []).filter((c: any) => c.deal_id === d.id).map((c: any) => ({
+          id: c.id, address: c.address || "", salePrice: c.sale_price || 0,
+          sqft: c.sqft || 0, bedBath: c.bed_bath || "", daysOnMarket: c.days_on_market || 0,
+          soldDate: c.sold_date || "", strength: c.strength || "average", notes: c.notes || "",
+        })),
+        scopeItems: (scopeData || []).filter((s: any) => s.deal_id === d.id).map((s: any) => ({
+          id: s.id, category: s.category || "Other", description: s.description || "",
+          quantity: s.quantity || 1, unit: s.unit || "lot", myEstimate: s.my_estimate || 0,
+          notes: s.notes || "", priority: s.priority || "important",
+        })),
+      }));
+
+      setDeals(assembled);
+      if (assembled.length > 0) setActiveDealId(assembled[0].id);
+    } catch (err) {
+      console.error("Error loading deals:", err);
+    }
+    setDbLoading(false);
+  };
+
+  const createDemoDeal = async () => {
+    const { data: dealData, error } = await supabase.from("deals").insert({
+      user_id: user.id,
+      property_address: DEMO_INPUTS.propertyAddress,
+      purchase_price: DEMO_INPUTS.purchasePrice,
+      rehab_cost: DEMO_INPUTS.rehabCost,
+      arv: DEMO_INPUTS.arv,
+      loan_amount: DEMO_INPUTS.loanAmount,
+      interest_rate: DEMO_INPUTS.interestRate,
+      loan_term_months: DEMO_INPUTS.loanTermMonths,
+      holding_months: DEMO_INPUTS.holdingMonths,
+      closing_costs_buy: DEMO_INPUTS.closingCostsBuy,
+      closing_costs_sell: DEMO_INPUTS.closingCostsSell,
+      monthly_rent: DEMO_INPUTS.monthlyRent,
+      monthly_expenses: DEMO_INPUTS.monthlyExpenses,
+      notes: DEMO_INPUTS.notes,
+      deal_status: DEMO_INPUTS.dealStatus,
+      subject_sqft: 1480,
+      lender_info: { investorName: "", investorCompany: "", investorPhone: "", investorEmail: "", lenderName: "" },
+    }).select().single();
+
+    if (error || !dealData) return;
+
+    await supabase.from("comps").insert(DEMO_COMPS.map(c => ({ deal_id: dealData.id, user_id: user.id, address: c.address, sale_price: c.salePrice, sqft: c.sqft, bed_bath: c.bedBath, days_on_market: c.daysOnMarket, sold_date: c.soldDate, strength: c.strength, notes: c.notes })));
+    await supabase.from("scope_items").insert(DEMO_SCOPE.map(s => ({ deal_id: dealData.id, user_id: user.id, category: s.category, description: s.description, quantity: s.quantity, unit: s.unit, my_estimate: s.myEstimate, notes: s.notes, priority: s.priority })));
+
+    await loadDeals();
+  };
+
+  // ─── Auto-save with debounce ──────────────────────────────────────────────
+  const saveDeal = async (deal: Deal) => {
+    if (!user) return;
+    setSyncing(true);
+    try {
+      await supabase.from("deals").upsert({
+        id: deal.id, user_id: user.id, updated_at: new Date().toISOString(),
+        property_address: deal.inputs.propertyAddress,
+        purchase_price: deal.inputs.purchasePrice,
+        rehab_cost: deal.inputs.rehabCost,
+        arv: deal.inputs.arv,
+        loan_amount: deal.inputs.loanAmount,
+        interest_rate: deal.inputs.interestRate,
+        loan_term_months: deal.inputs.loanTermMonths,
+        holding_months: deal.inputs.holdingMonths,
+        closing_costs_buy: deal.inputs.closingCostsBuy,
+        closing_costs_sell: deal.inputs.closingCostsSell,
+        monthly_rent: deal.inputs.monthlyRent,
+        monthly_expenses: deal.inputs.monthlyExpenses,
+        notes: deal.inputs.notes,
+        deal_status: deal.inputs.dealStatus,
+        subject_sqft: deal.subjectSqft,
+        lender_info: deal.lenderInfo,
+      });
+
+      // Delete and re-insert comps
+      await supabase.from("comps").delete().eq("deal_id", deal.id);
+      if (deal.comps.length > 0) {
+        await supabase.from("comps").insert(deal.comps.map(c => ({ id: c.id, deal_id: deal.id, user_id: user.id, address: c.address, sale_price: c.salePrice, sqft: c.sqft, bed_bath: c.bedBath, days_on_market: c.daysOnMarket, sold_date: c.soldDate, strength: c.strength, notes: c.notes })));
+      }
+
+      // Delete and re-insert scope items
+      await supabase.from("scope_items").delete().eq("deal_id", deal.id);
+      if (deal.scopeItems.length > 0) {
+        await supabase.from("scope_items").insert(deal.scopeItems.map(s => ({ id: s.id, deal_id: deal.id, user_id: user.id, category: s.category, description: s.description, quantity: s.quantity, unit: s.unit, my_estimate: s.myEstimate, notes: s.notes, priority: s.priority })));
+      }
+    } catch (err) {
+      console.error("Save error:", err);
+    }
+    setSyncing(false);
+  };
+
+  const updateDeal = (changes: Partial<Deal>) => {
+    setDeals((prev) => prev.map((d) => {
+      if (d.id !== activeDealId) return d;
+      const updated = { ...d, updatedAt: new Date().toISOString(), ...changes };
+      // Debounced save
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => saveDeal(updated), 1500);
+      return updated;
+    }));
+  };
+
   const activeDeal = deals.find((d) => d.id === activeDealId);
   const inputs = activeDeal?.inputs ?? BLANK_INPUTS;
   const metrics = calculateMetrics(inputs);
   const scoreStyle = SCORE_STYLES[metrics.dealScore];
 
-  const updateDeal = (changes: Partial<Deal>) =>
-    setDeals((prev) => prev.map((d) => d.id === activeDealId ? { ...d, updatedAt: new Date().toISOString(), ...changes } : d));
-
   const updateInputs = (updates: Partial<DealInputs>) => updateDeal({ inputs: { ...inputs, ...updates } });
   const set = (key: keyof DealInputs) => (value: number | string) => updateInputs({ [key]: value });
 
-  const handleNewDeal = () => {
-    const nd: Deal = { id: uid(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), inputs: { ...BLANK_INPUTS }, comps: [], subjectSqft: 0, lenderInfo: { ...BLANK_LENDER_INFO }, scopeItems: [] };
+  const handleNewDeal = async () => {
+    if (!user) return;
+    const { data, error } = await supabase.from("deals").insert({
+      user_id: user.id,
+      property_address: "", purchase_price: 0, rehab_cost: 0, arv: 0, loan_amount: 0,
+      interest_rate: 11.5, loan_term_months: 12, holding_months: 6,
+      closing_costs_buy: 0, closing_costs_sell: 0, monthly_rent: 0, monthly_expenses: 0,
+      notes: "", deal_status: "prospect", subject_sqft: 0, lender_info: BLANK_LENDER_INFO,
+    }).select().single();
+    if (error || !data) return;
+    const nd: Deal = { id: data.id, createdAt: data.created_at, updatedAt: data.updated_at, inputs: { ...BLANK_INPUTS }, comps: [], subjectSqft: 0, lenderInfo: { ...BLANK_LENDER_INFO }, scopeItems: [] };
     setDeals((prev) => [nd, ...prev]);
     setActiveDealId(nd.id);
     setActiveTab("deal");
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    await supabase.from("deals").delete().eq("id", id);
     const remaining = deals.filter((d) => d.id !== id);
     setDeals(remaining);
     if (activeDealId === id) setActiveDealId(remaining.length > 0 ? remaining[0].id : "");
-    if (remaining.length === 0) localStorage.removeItem("fliplogic_deals_v5");
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setDeals([]);
+    setActiveDealId("");
   };
 
   const handleAddAIToScope = (items: ScopeItem[]) => {
@@ -1132,6 +1128,21 @@ export default function App() {
     setActiveTab("scope");
   };
 
+  // ─── Render ───────────────────────────────────────────────────────────────
+  if (authLoading) return (
+    <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", alignItems: "center", justifyContent: "center", color: "#475569", fontFamily: "'Syne', sans-serif", fontSize: 14 }}>
+      Loading...
+    </div>
+  );
+
+  if (!user) return <AuthScreen onAuth={() => {}} />;
+
+  if (dbLoading) return (
+    <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", alignItems: "center", justifyContent: "center", color: "#475569", fontFamily: "'Syne', sans-serif", fontSize: 14 }}>
+      Loading your deals...
+    </div>
+  );
+
   if (!activeDeal) return (
     <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <button onClick={handleNewDeal} style={{ background: "#1d4ed8", border: "none", color: "#fff", padding: "16px 32px", borderRadius: 8, fontSize: 16, cursor: "pointer" }}>+ Start Your First Deal</button>
@@ -1139,18 +1150,18 @@ export default function App() {
   );
 
   const TABS = [
-    { key: "deal",   label: "Deal Analysis" },
-    { key: "ai",     label: "🤖 AI Walkthrough" },
-    { key: "comps",  label: `Comps ${activeDeal.comps.length > 0 ? `(${activeDeal.comps.length})` : ""}` },
+    { key: "deal", label: "Deal Analysis" },
+    { key: "ai", label: "🤖 AI Walkthrough" },
+    { key: "comps", label: `Comps ${activeDeal.comps.length > 0 ? `(${activeDeal.comps.length})` : ""}` },
     { key: "rental", label: "Rental Pivot" },
     { key: "stress", label: "Stress Test" },
-    { key: "scope",  label: `🔨 Scope ${activeDeal.scopeItems.length > 0 ? `(${activeDeal.scopeItems.length})` : ""}` },
+    { key: "scope", label: `🔨 Scope ${activeDeal.scopeItems.length > 0 ? `(${activeDeal.scopeItems.length})` : ""}` },
     { key: "packet", label: "📄 Lender Packet" },
   ] as const;
 
   return (
     <div style={{ minHeight: "100vh", background: "#060b14", color: "#f1f5f9", fontFamily: "'Syne', sans-serif", display: "flex" }}>
-      <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleNewDeal} onDelete={handleDelete} />
+      <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleNewDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto" }}>
         {/* Header */}
         <div style={{ background: "linear-gradient(135deg, #060b14 0%, #0d1829 100%)", borderBottom: "1px solid #1e293b", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
@@ -1236,13 +1247,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === "ai" && (
-            <AIWalkthroughTab
-              address={inputs.propertyAddress}
-              buildYear={1970}
-              onAddToScope={handleAddAIToScope}
-            />
-          )}
+          {activeTab === "ai" && <AIWalkthroughTab address={inputs.propertyAddress} buildYear={1970} onAddToScope={handleAddAIToScope} />}
 
           {activeTab === "comps" && (
             <CompsTab comps={activeDeal.comps} subjectSqft={activeDeal.subjectSqft} enteredArv={inputs.arv}
@@ -1272,7 +1277,12 @@ export default function App() {
                   <MetricCard label="Annual Cash Flow" value={fmt((inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment) * 12)} />
                 </div>
                 <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 14, marginTop: 10 }}>
-                  <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>DSCR Threshold Guide</div>
+                  <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+                    DSCR — Debt Service Coverage Ratio
+                  </div>
+                  <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, marginBottom: 12 }}>
+                    DSCR tells lenders whether your rental income covers the loan payment. A score of 1.25 means you earn $1.25 for every $1.00 owed — lenders love this.
+                  </div>
                   {[{ label: "1.25+ — Most lenders approve", color: "#22c55e" }, { label: "1.10–1.24 — Some lenders, higher rate", color: "#f59e0b" }, { label: "1.00–1.09 — Very limited options", color: "#f97316" }, { label: "Below 1.0 — Negative cash flow", color: "#ef4444" }].map((row) => (
                     <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                       <div style={{ width: 8, height: 8, borderRadius: "50%", background: row.color, flexShrink: 0 }} />
@@ -1308,8 +1318,7 @@ export default function App() {
 
           {activeTab === "scope" && (
             <ScopeOfWorkTab
-              scopeItems={activeDeal.scopeItems}
-              address={inputs.propertyAddress}
+              scopeItems={activeDeal.scopeItems} address={inputs.propertyAddress}
               onAdd={() => updateDeal({ scopeItems: [...activeDeal.scopeItems, { id: uid(), category: "Other", description: "", quantity: 1, unit: "lot", myEstimate: 0, notes: "", priority: "important" }] })}
               onUpdate={(id, u) => updateDeal({ scopeItems: activeDeal.scopeItems.map((s) => s.id === id ? { ...s, ...u } : s) })}
               onDelete={(id) => updateDeal({ scopeItems: activeDeal.scopeItems.filter((s) => s.id !== id) })}
@@ -1317,11 +1326,8 @@ export default function App() {
           )}
 
           {activeTab === "packet" && (
-            <LenderPacketTab
-              deal={activeDeal} metrics={metrics}
-              lenderInfo={activeDeal.lenderInfo ?? BLANK_LENDER_INFO}
-              onUpdateLenderInfo={(u) => updateDeal({ lenderInfo: { ...(activeDeal.lenderInfo ?? BLANK_LENDER_INFO), ...u } })}
-            />
+            <LenderPacketTab deal={activeDeal} metrics={metrics} lenderInfo={activeDeal.lenderInfo ?? BLANK_LENDER_INFO}
+              onUpdateLenderInfo={(u) => updateDeal({ lenderInfo: { ...(activeDeal.lenderInfo ?? BLANK_LENDER_INFO), ...u } })} />
           )}
         </div>
       </div>

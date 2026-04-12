@@ -1,21 +1,8 @@
-# Dependencies
+# Root-level artifacts
 node_modules
-
-# Build
 dist
-dist-ssr
-*.local
-
-# Env (secrets)
-.env
-.env.*
-!.env.example
-
-# Logs / OS
-*.log
 .DS_Store
+*.log
 
-# Editor
-.idea
-.vscode/*
-!.vscode/extensions.json
+# Nested duplicate copy (historical artifact; not part of app)
+vitejs-vite-buku8hgk/vitejs-vite-buku8hgk/
