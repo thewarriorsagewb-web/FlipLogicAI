@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── Supabase Client ──────────────────────────────────────────────────────────
@@ -185,6 +185,19 @@ const PRIORITY_STYLES = {
   optional: { color: "#60a5fa", bg: "#0c1a2e", border: "#3b82f6", label: "Optional" },
 };
 
+const MOBILE_BREAKPOINT = 768;
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return isMobile;
+}
+
 // ─── Auth Screen ──────────────────────────────────────────────────────────────
 function AuthScreen({ onAuth }: { onAuth: () => void }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -215,11 +228,19 @@ function AuthScreen({ onAuth }: { onAuth: () => void }) {
     }
   };
 
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT);
+  useEffect(() => {
+    const q = () => setNarrow(window.innerWidth < MOBILE_BREAKPOINT);
+    q();
+    window.addEventListener("resize", q);
+    return () => window.removeEventListener("resize", q);
+  }, []);
+
   return (
-    <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif" }}>
-      <div style={{ width: 400, padding: 40, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12 }}>
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: "#f1f5f9", marginBottom: 6 }}>
+    <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", padding: narrow ? "16px 12px" : 0, boxSizing: "border-box" }}>
+      <div style={{ width: "100%", maxWidth: 400, padding: narrow ? "28px 20px" : 40, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12, boxSizing: "border-box" }}>
+        <div style={{ textAlign: "center", marginBottom: narrow ? 24 : 32 }}>
+          <div style={{ fontSize: narrow ? 24 : 28, fontWeight: 800, color: "#f1f5f9", marginBottom: 6 }}>
             FLIP<span style={{ color: "#3b82f6" }}>LOGIC</span> AI
           </div>
           <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.15em" }}>COMMAND CENTER · DEAL ANALYZER</div>
@@ -254,8 +275,8 @@ function AuthScreen({ onAuth }: { onAuth: () => void }) {
         {error && <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 14 }}>{error}</div>}
         {message && <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#22c55e", marginBottom: 14 }}>{message}</div>}
 
-        <button onClick={handleSubmit} disabled={loading}
-          style={{ width: "100%", background: loading ? "#1e293b" : "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: "12px 0", fontSize: 13, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", letterSpacing: "0.05em" }}>
+        <button type="button" onClick={handleSubmit} disabled={loading}
+          style={{ width: "100%", background: loading ? "#1e293b" : "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: narrow ? "14px 0" : "12px 0", minHeight: narrow ? 48 : undefined, fontSize: narrow ? 14 : 13, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", letterSpacing: "0.05em" }}>
           {loading ? "Please wait..." : mode === "signin" ? "SIGN IN" : "CREATE ACCOUNT"}
         </button>
 
@@ -268,35 +289,52 @@ function AuthScreen({ onAuth }: { onAuth: () => void }) {
 }
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
-function InputField({ label, value, onChange, prefix = "$", suffix = "" }: {
-  label: string; value: number; onChange: (v: number) => void; prefix?: string; suffix?: string;
+function InputField({ label, value, onChange, prefix = "$", suffix = "", isMobile = false }: {
+  label: string; value: number; onChange: (v: number) => void; prefix?: string; suffix?: string; isMobile?: boolean;
 }) {
+  const pad = isMobile ? "12px 14px" : "8px 10px";
+  const minH = isMobile ? 44 : undefined;
   return (
-    <div style={{ marginBottom: 12 }}>
-      <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</label>
-      <div style={{ display: "flex", alignItems: "center", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden" }}>
-        {prefix && <span style={{ padding: "8px 10px", color: "#475569", fontSize: 13, background: "#0a0f1a", borderRight: "1px solid #1e293b" }}>{prefix}</span>}
+    <div style={{ marginBottom: isMobile ? 14 : 12 }}>
+      <label style={{ display: "block", fontSize: isMobile ? 12 : 11, color: "#94a3b8", marginBottom: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</label>
+      <div style={{ display: "flex", alignItems: "center", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden", width: "100%", minHeight: minH }}>
+        {prefix && <span style={{ padding: pad, color: "#475569", fontSize: isMobile ? 14 : 13, background: "#0a0f1a", borderRight: "1px solid #1e293b", display: "flex", alignItems: "center", minHeight: minH }}>{prefix}</span>}
         <input type="number" value={value || ""} onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-          style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: "8px 10px", fontSize: 14, fontFamily: "'JetBrains Mono', monospace" }} />
-        {suffix && <span style={{ padding: "8px 10px", color: "#475569", fontSize: 13, background: "#0a0f1a", borderLeft: "1px solid #1e293b" }}>{suffix}</span>}
+          style={{ flex: 1, width: "100%", minWidth: 0, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: pad, fontSize: isMobile ? 16 : 14, fontFamily: "'JetBrains Mono', monospace", minHeight: minH, boxSizing: "border-box" }} />
+        {suffix && <span style={{ padding: pad, color: "#475569", fontSize: isMobile ? 14 : 13, background: "#0a0f1a", borderLeft: "1px solid #1e293b", display: "flex", alignItems: "center", minHeight: minH }}>{suffix}</span>}
       </div>
     </div>
   );
 }
 
-function MetricCard({ label, value, sub, highlight = false }: { label: string; value: string; sub?: string; highlight?: boolean }) {
+function MetricCard({ label, value, sub, highlight = false, isMobile = false }: { label: string; value: string; sub?: string; highlight?: boolean; isMobile?: boolean }) {
   return (
-    <div style={{ background: highlight ? "#0d1f35" : "#0a0f1a", border: `1px solid ${highlight ? "#1d4ed8" : "#1e293b"}`, borderRadius: 8, padding: "14px 16px" }}>
-      <div style={{ fontSize: 10, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: highlight ? "#60a5fa" : "#f1f5f9", fontFamily: "'JetBrains Mono', monospace" }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>{sub}</div>}
+    <div style={{ background: highlight ? "#0d1f35" : "#0a0f1a", border: `1px solid ${highlight ? "#1d4ed8" : "#1e293b"}`, borderRadius: 8, padding: isMobile ? "14px 14px" : "14px 16px", minHeight: isMobile ? 72 : undefined }}>
+      <div style={{ fontSize: isMobile ? 11 : 10, color: "#64748b", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 700, color: highlight ? "#60a5fa" : "#f1f5f9", fontFamily: "'JetBrains Mono', monospace" }}>{value}</div>
+      {sub && <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
 
-function ScenarioRow({ scenario, inputs }: { scenario: Scenario; inputs: DealInputs }) {
+function ScenarioRow({ scenario, inputs, isMobile = false }: { scenario: Scenario; inputs: DealInputs; isMobile?: boolean }) {
   const m = calculateMetrics({ ...inputs, rehabCost: inputs.rehabCost * scenario.rehabMultiplier, arv: inputs.arv * scenario.arvMultiplier });
   const score = SCORE_STYLES[m.dealScore];
+  if (isMobile) {
+    return (
+      <div style={{ padding: "12px 14px", background: "#0a0f1a", borderRadius: 8, border: "1px solid #1e293b", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <span style={{ color: "#cbd5e1", fontSize: 14, fontWeight: 700 }}>{scenario.label}</span>
+          <div style={{ background: score.bg, color: score.text, border: `1px solid ${score.border}`, borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>{m.dealScore}</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div><div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", marginBottom: 4 }}>Net Profit</div><div style={{ color: "#f1f5f9", fontSize: 14, fontFamily: "monospace" }}>{fmt(m.netProfit)}</div></div>
+          <div><div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", marginBottom: 4 }}>ROI</div><div style={{ color: m.roi >= 15 ? "#22c55e" : m.roi >= 8 ? "#f59e0b" : "#f87171", fontSize: 14, fontFamily: "monospace" }}>{fmtPct(m.roi)}</div></div>
+          <div style={{ gridColumn: "1 / -1" }}><div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", marginBottom: 4 }}>LTV</div><div style={{ color: "#94a3b8", fontSize: 14, fontFamily: "monospace" }}>{fmtPct(m.ltv)}</div></div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 80px", gap: 8, alignItems: "center", padding: "10px 14px", background: "#0a0f1a", borderRadius: 6, border: "1px solid #1e293b" }}>
       <div style={{ color: "#cbd5e1", fontSize: 13 }}>{scenario.label}</div>
@@ -309,8 +347,8 @@ function ScenarioRow({ scenario, inputs }: { scenario: Scenario; inputs: DealInp
 }
 
 // ─── AI WALKTHROUGH TAB ───────────────────────────────────────────────────────
-function AIWalkthroughTab({ address, buildYear, onAddToScope }: {
-  address: string; buildYear: number; onAddToScope: (items: ScopeItem[]) => void;
+function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false }: {
+  address: string; buildYear: number; onAddToScope: (items: ScopeItem[]) => void; isMobile?: boolean;
 }) {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem("fliplogic_api_key") || "");
   const [showKey, setShowKey] = useState(false);
@@ -392,40 +430,40 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope }: {
           <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>Anthropic API Key</div>
           {apiKey && <div style={{ fontSize: 11, color: "#22c55e" }}>✓ Key saved</div>}
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <div style={{ flex: 1, display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden" }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 8, width: "100%" }}>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden", minHeight: isMobile ? 44 : undefined, width: "100%" }}>
             <input type={showKey ? "text" : "password"} value={apiKey} onChange={(e) => saveKey(e.target.value)} placeholder="sk-ant-api03-..."
-              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: "8px 12px", fontSize: 13, fontFamily: "monospace" }} />
-            <button onClick={() => setShowKey(!showKey)} style={{ padding: "8px 12px", background: "transparent", border: "none", color: "#475569", cursor: "pointer", fontSize: 11 }}>{showKey ? "Hide" : "Show"}</button>
+              style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: isMobile ? "12px 14px" : "8px 12px", fontSize: isMobile ? 15 : 13, fontFamily: "monospace" }} />
+            <button type="button" onClick={() => setShowKey(!showKey)} style={{ padding: isMobile ? "12px 16px" : "8px 12px", minHeight: isMobile ? 44 : undefined, background: "transparent", border: "none", color: "#475569", cursor: "pointer", fontSize: isMobile ? 13 : 11 }}>{showKey ? "Hide" : "Show"}</button>
           </div>
         </div>
-        <div style={{ fontSize: 11, color: "#334155", marginTop: 6 }}>Your key is stored only in your browser. Get yours at console.anthropic.com</div>
+        <div style={{ fontSize: isMobile ? 12 : 11, color: "#334155", marginTop: 6 }}>Your key is stored only in your browser. Get yours at console.anthropic.com</div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 340px", gap: isMobile ? 20 : 24 }}>
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 14 }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: 16, marginBottom: 16, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: isMobile ? 14 : 14 }}>
             <div>
               <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Property Build Year</div>
-              <div style={{ display: "flex", alignItems: "center", background: "#060b14", border: `1px solid ${buildYearInput < 1978 ? "#d97706" : "#1e293b"}`, borderRadius: 6, overflow: "hidden", width: 120 }}>
+              <div style={{ display: "flex", alignItems: "center", background: "#060b14", border: `1px solid ${buildYearInput < 1978 ? "#d97706" : "#1e293b"}`, borderRadius: 6, overflow: "hidden", width: isMobile ? "100%" : 120, minHeight: isMobile ? 44 : undefined }}>
                 <input type="number" value={buildYearInput} onChange={(e) => setBuildYearInput(parseInt(e.target.value) || 1970)}
-                  style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: "8px 10px", fontSize: 14, fontFamily: "monospace" }} />
+                  style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: isMobile ? "12px 14px" : "8px 10px", fontSize: isMobile ? 16 : 14, fontFamily: "monospace" }} />
               </div>
             </div>
-            {buildYearInput < 1978 && <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 6, padding: "8px 14px", fontSize: 11, color: "#f59e0b" }}>⚠ Pre-1978 build — AI will flag lead paint risk automatically</div>}
+            {buildYearInput < 1978 && <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 6, padding: "10px 14px", fontSize: isMobile ? 12 : 11, color: "#f59e0b", lineHeight: 1.45 }}>⚠ Pre-1978 build — AI will flag lead paint risk automatically</div>}
           </div>
 
           <div onClick={() => fileRef.current?.click()} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handlePhotos(e.dataTransfer.files); }}
-            style={{ border: "2px dashed #1e293b", borderRadius: 8, padding: "32px 20px", textAlign: "center", cursor: "pointer", marginBottom: 16, background: "#0a0f1a" }}
+            style={{ border: "2px dashed #1e293b", borderRadius: 8, padding: isMobile ? "28px 16px" : "32px 20px", textAlign: "center", cursor: "pointer", marginBottom: 16, background: "#0a0f1a", minHeight: isMobile ? 120 : undefined }}
             onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#3b82f6")} onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#1e293b")}>
             <div style={{ fontSize: 32, marginBottom: 10 }}>📸</div>
-            <div style={{ fontSize: 14, color: "#94a3b8", marginBottom: 4 }}>Drop property photos here or click to upload</div>
-            <div style={{ fontSize: 11, color: "#475569" }}>Up to 8 photos · JPG, PNG, WEBP</div>
+            <div style={{ fontSize: isMobile ? 15 : 14, color: "#94a3b8", marginBottom: 4 }}>Drop property photos here or click to upload</div>
+            <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569" }}>Up to 8 photos · JPG, PNG, WEBP</div>
             <input ref={fileRef} type="file" multiple accept="image/*" style={{ display: "none" }} onChange={(e) => e.target.files && handlePhotos(e.target.files)} />
           </div>
 
           {photos.length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
               {photos.map((p) => (
                 <div key={p.id} style={{ position: "relative", borderRadius: 6, overflow: "hidden", aspectRatio: "1", background: "#0a0f1a", border: "1px solid #1e293b" }}>
                   <img src={`data:${p.mediaType};base64,${p.base64}`} alt={p.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -435,8 +473,8 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope }: {
             </div>
           )}
 
-          <button onClick={analyze} disabled={analyzing || photos.length === 0 || !apiKey}
-            style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: "14px 0", fontSize: 14, fontWeight: 700, cursor: analyzing || photos.length === 0 || !apiKey ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
+          <button type="button" onClick={analyze} disabled={analyzing || photos.length === 0 || !apiKey}
+            style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 15 : 14, fontWeight: 700, cursor: analyzing || photos.length === 0 || !apiKey ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
               background: analyzing || photos.length === 0 || !apiKey ? "#1e293b" : "linear-gradient(135deg, #7c3aed, #6d28d9)", opacity: analyzing || photos.length === 0 || !apiKey ? 0.5 : 1 }}>
             {analyzing ? "🔍 Analyzing..." : `🤖 Analyze ${photos.length > 0 ? photos.length + " Photo" + (photos.length > 1 ? "s" : "") : "Photos"} with AI`}
           </button>
@@ -446,11 +484,11 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope }: {
 
           {findings.length > 0 && (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}>AI Findings — Select items to add to Scope</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => setSelectedFindings(new Set(findings.map((_, i) => i)))} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 4, color: "#94a3b8", padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>All</button>
-                  <button onClick={() => setSelectedFindings(new Set())} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 4, color: "#94a3b8", padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>None</button>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 10 : 0, marginBottom: 12 }}>
+                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}>AI Findings — Select items to add to Scope</div>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <button type="button" onClick={() => setSelectedFindings(new Set(findings.map((_, i) => i)))} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#94a3b8", padding: isMobile ? "10px 14px" : "4px 10px", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 13 : 11, cursor: "pointer" }}>All</button>
+                  <button type="button" onClick={() => setSelectedFindings(new Set())} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#94a3b8", padding: isMobile ? "10px 14px" : "4px 10px", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 13 : 11, cursor: "pointer" }}>None</button>
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -492,11 +530,11 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope }: {
           )}
           {findings.length > 0 && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                <MetricCard label="Total Findings" value={`${findings.length}`} sub="items identified" />
-                <MetricCard label="Selected Est." value={fmt(totalEstimate)} highlight />
-                <MetricCard label="Critical Items" value={`${findings.filter(f => f.priority === "critical").length}`} sub="need attention" />
-                <MetricCard label="Hazmat Flags" value={`${hazmatFindings.length}`} sub={hazmatFindings.length > 0 ? "⚠ Review required" : "None detected"} />
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                <MetricCard label="Total Findings" value={`${findings.length}`} sub="items identified" isMobile={isMobile} />
+                <MetricCard label="Selected Est." value={fmt(totalEstimate)} highlight isMobile={isMobile} />
+                <MetricCard label="Critical Items" value={`${findings.filter(f => f.priority === "critical").length}`} sub="need attention" isMobile={isMobile} />
+                <MetricCard label="Hazmat Flags" value={`${hazmatFindings.length}`} sub={hazmatFindings.length > 0 ? "⚠ Review required" : "None detected"} isMobile={isMobile} />
               </div>
               {hazmatFindings.length > 0 && (
                 <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 8, padding: 14, marginBottom: 14 }}>
@@ -504,13 +542,13 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope }: {
                   {hazmatFindings.map((f, i) => <div key={i} style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>• {f.description}</div>)}
                 </div>
               )}
-              <button onClick={handleAddToScope} disabled={selectedFindings.size === 0}
-                style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: "14px 0", fontSize: 13, fontWeight: 700, cursor: selectedFindings.size === 0 ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
+              <button type="button" onClick={handleAddToScope} disabled={selectedFindings.size === 0}
+                style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : 13, fontWeight: 700, cursor: selectedFindings.size === 0 ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
                   background: selectedFindings.size === 0 ? "#1e293b" : "linear-gradient(135deg, #16a34a, #15803d)", opacity: selectedFindings.size === 0 ? 0.5 : 1 }}>
                 + Add {selectedFindings.size} Item{selectedFindings.size !== 1 ? "s" : ""} to Scope of Work
               </button>
-              <button onClick={() => { setFindings([]); setPhotos([]); setStatus(""); setSelectedFindings(new Set()); }}
-                style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#475569", padding: "10px 0", fontSize: 12, cursor: "pointer" }}>
+              <button type="button" onClick={() => { setFindings([]); setPhotos([]); setStatus(""); setSelectedFindings(new Set()); }}
+                style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#475569", padding: isMobile ? "14px 16px" : "10px 0", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 14 : 12, cursor: "pointer" }}>
                 Clear & Start New Analysis
               </button>
             </>
@@ -522,24 +560,24 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope }: {
 }
 
 // ─── Comp Card ────────────────────────────────────────────────────────────────
-function CompCard({ comp, onUpdate, onDelete }: { comp: Comp; onUpdate: (u: Partial<Comp>) => void; onDelete: () => void }) {
+function CompCard({ comp, onUpdate, onDelete, isMobile = false }: { comp: Comp; onUpdate: (u: Partial<Comp>) => void; onDelete: () => void; isMobile?: boolean }) {
   const ppsf = comp.salePrice > 0 && comp.sqft > 0 ? comp.salePrice / comp.sqft : 0;
   const strength = STRENGTH_STYLES[comp.strength];
-  const fs = { background: "#060b14", border: "1px solid #1e293b", borderRadius: 4, color: "#f1f5f9", padding: "6px 8px", fontSize: 12, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" as const };
+  const fs = { background: "#060b14", border: "1px solid #1e293b", borderRadius: 4, color: "#f1f5f9", padding: isMobile ? "12px 10px" : "6px 8px", fontSize: isMobile ? 15 : 12, fontFamily: "monospace", outline: "none", width: "100%", boxSizing: "border-box" as const, minHeight: isMobile ? 44 : undefined };
   return (
-    <div style={{ background: "#0a0f1a", border: `1px solid ${strength.border}`, borderRadius: 8, padding: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={{ display: "flex", gap: 6 }}>
+    <div style={{ background: "#0a0f1a", border: `1px solid ${strength.border}`, borderRadius: 8, padding: isMobile ? 16 : 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {(["strong", "average", "weak"] as const).map((s) => (
-            <button key={s} onClick={() => onUpdate({ strength: s })} style={{ padding: "3px 10px", borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: "pointer", border: `1px solid ${comp.strength === s ? STRENGTH_STYLES[s].border : "#1e293b"}`, background: comp.strength === s ? STRENGTH_STYLES[s].bg : "transparent", color: comp.strength === s ? STRENGTH_STYLES[s].color : "#475569", fontFamily: "'Syne', sans-serif" }}>
+            <button type="button" key={s} onClick={() => onUpdate({ strength: s })} style={{ padding: isMobile ? "10px 12px" : "3px 10px", minHeight: isMobile ? 44 : undefined, borderRadius: 4, fontSize: isMobile ? 12 : 10, fontWeight: 700, cursor: "pointer", border: `1px solid ${comp.strength === s ? STRENGTH_STYLES[s].border : "#1e293b"}`, background: comp.strength === s ? STRENGTH_STYLES[s].bg : "transparent", color: comp.strength === s ? STRENGTH_STYLES[s].color : "#475569", fontFamily: "'Syne', sans-serif" }}>
               {STRENGTH_STYLES[s].label}
             </button>
           ))}
         </div>
-        <button onClick={onDelete} style={{ background: "transparent", border: "none", color: "#334155", cursor: "pointer", fontSize: 16 }}>×</button>
+        <button type="button" onClick={onDelete} style={{ background: "transparent", border: "none", color: "#334155", cursor: "pointer", fontSize: 20, minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center" }} aria-label="Remove comp">×</button>
       </div>
       <input type="text" value={comp.address} placeholder="Address..." onChange={(e) => onUpdate({ address: e.target.value })} style={{ ...fs, marginBottom: 8, color: "#94a3b8" }} />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
         {[{ label: "Sale Price", val: comp.salePrice, key: "salePrice", type: "number" }, { label: "Sq Ft", val: comp.sqft, key: "sqft", type: "number" }, { label: "Bed/Bath", val: comp.bedBath, key: "bedBath", type: "text" }, { label: "DOM", val: comp.daysOnMarket, key: "daysOnMarket", type: "number" }, { label: "Sold Date", val: comp.soldDate, key: "soldDate", type: "text" }].map((f) => (
           <div key={f.key}>
             <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>{f.label}</div>
@@ -557,56 +595,56 @@ function CompCard({ comp, onUpdate, onDelete }: { comp: Comp; onUpdate: (u: Part
 }
 
 // ─── Comps Tab ────────────────────────────────────────────────────────────────
-function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onDeleteComp, onUpdateSubjectSqft, onApplyArv }: {
+function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onDeleteComp, onUpdateSubjectSqft, onApplyArv, isMobile = false }: {
   comps: Comp[]; subjectSqft: number; enteredArv: number;
   onAddComp: () => void; onUpdateComp: (id: string, u: Partial<Comp>) => void;
-  onDeleteComp: (id: string) => void; onUpdateSubjectSqft: (v: number) => void; onApplyArv: (v: number) => void;
+  onDeleteComp: (id: string) => void; onUpdateSubjectSqft: (v: number) => void; onApplyArv: (v: number) => void; isMobile?: boolean;
 }) {
   const { weightedArv, avgPpsf, strongAvg, allAvg } = calculateCompARV(comps, subjectSqft);
   const validComps = comps.filter((c) => c.salePrice > 0);
   const arvDiff = enteredArv > 0 && weightedArv > 0 ? ((enteredArv - weightedArv) / weightedArv) * 100 : null;
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 14 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Subject Sq Ft</div>
-          <div style={{ display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden", maxWidth: 160 }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 14 : 16, marginBottom: 20, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: isMobile ? 16 : 14 }}>
+        <div style={{ flex: 1, width: isMobile ? "100%" : undefined }}>
+          <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Subject Sq Ft</div>
+          <div style={{ display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden", maxWidth: isMobile ? "100%" : 160, minHeight: isMobile ? 44 : undefined }}>
             <input type="number" value={subjectSqft || ""} onChange={(e) => onUpdateSubjectSqft(parseFloat(e.target.value) || 0)}
-              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: "8px 10px", fontSize: 14, fontFamily: "monospace" }} />
-            <span style={{ padding: "8px 8px", color: "#475569", fontSize: 11, background: "#0a0f1a", borderLeft: "1px solid #1e293b" }}>sqft</span>
+              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: isMobile ? "12px 14px" : "8px 10px", fontSize: isMobile ? 16 : 14, fontFamily: "monospace" }} />
+            <span style={{ padding: isMobile ? "12px 10px" : "8px 8px", color: "#475569", fontSize: isMobile ? 12 : 11, background: "#0a0f1a", borderLeft: "1px solid #1e293b" }}>sqft</span>
           </div>
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Your ARV</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "#f1f5f9", fontFamily: "monospace" }}>{enteredArv > 0 ? fmt(enteredArv) : "—"}</div>
+          <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Your ARV</div>
+          <div style={{ fontSize: isMobile ? 22 : 20, fontWeight: 700, color: "#f1f5f9", fontFamily: "monospace" }}>{enteredArv > 0 ? fmt(enteredArv) : "—"}</div>
         </div>
-        <div style={{ color: "#334155" }}>vs</div>
+        {!isMobile && <div style={{ color: "#334155" }}>vs</div>}
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Comp-Derived ARV</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: weightedArv > 0 ? "#22c55e" : "#334155", fontFamily: "monospace" }}>{weightedArv > 0 ? fmt(weightedArv) : "—"}</div>
+          <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Comp-Derived ARV</div>
+          <div style={{ fontSize: isMobile ? 22 : 20, fontWeight: 700, color: weightedArv > 0 ? "#22c55e" : "#334155", fontFamily: "monospace" }}>{weightedArv > 0 ? fmt(weightedArv) : "—"}</div>
         </div>
         {arvDiff !== null && (
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>Variance</div>
-            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "monospace", color: Math.abs(arvDiff) <= 5 ? "#22c55e" : Math.abs(arvDiff) <= 10 ? "#f59e0b" : "#f87171" }}>{arvDiff > 0 ? "+" : ""}{arvDiff.toFixed(1)}%</div>
-            <div style={{ fontSize: 10, color: "#475569" }}>{Math.abs(arvDiff) <= 5 ? "✓ On target" : arvDiff > 0 ? "⚠ You're high" : "⚠ You're low"}</div>
+          <div style={{ textAlign: isMobile ? "left" : "center" }}>
+            <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", marginBottom: 4 }}>Variance</div>
+            <div style={{ fontSize: isMobile ? 16 : 14, fontWeight: 700, fontFamily: "monospace", color: Math.abs(arvDiff) <= 5 ? "#22c55e" : Math.abs(arvDiff) <= 10 ? "#f59e0b" : "#f87171" }}>{arvDiff > 0 ? "+" : ""}{arvDiff.toFixed(1)}%</div>
+            <div style={{ fontSize: isMobile ? 11 : 10, color: "#475569" }}>{Math.abs(arvDiff) <= 5 ? "✓ On target" : arvDiff > 0 ? "⚠ You're high" : "⚠ You're low"}</div>
           </div>
         )}
-        {weightedArv > 0 && <button onClick={() => onApplyArv(Math.round(weightedArv))} style={{ background: "#1d4ed8", border: "none", borderRadius: 6, color: "#fff", padding: "8px 14px", fontSize: 11, cursor: "pointer", fontWeight: 700, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>Apply to Deal</button>}
+        {weightedArv > 0 && <button type="button" onClick={() => onApplyArv(Math.round(weightedArv))} style={{ width: isMobile ? "100%" : "auto", background: "#1d4ed8", border: "none", borderRadius: 6, color: "#fff", padding: isMobile ? "14px 16px" : "8px 14px", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : 11, cursor: "pointer", fontWeight: 700, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>Apply to Deal</button>}
       </div>
       {validComps.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
-          <MetricCard label="Comp Count" value={`${validComps.length}`} />
-          <MetricCard label="Avg $/SqFt" value={avgPpsf > 0 ? `$${avgPpsf.toFixed(0)}` : "—"} highlight />
-          <MetricCard label="Strong Comp Avg" value={strongAvg > 0 ? fmt(strongAvg) : "—"} />
-          <MetricCard label="All Comp Avg" value={allAvg > 0 ? fmt(allAvg) : "—"} />
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
+          <MetricCard label="Comp Count" value={`${validComps.length}`} isMobile={isMobile} />
+          <MetricCard label="Avg $/SqFt" value={avgPpsf > 0 ? `$${avgPpsf.toFixed(0)}` : "—"} highlight isMobile={isMobile} />
+          <MetricCard label="Strong Comp Avg" value={strongAvg > 0 ? fmt(strongAvg) : "—"} isMobile={isMobile} />
+          <MetricCard label="All Comp Avg" value={allAvg > 0 ? fmt(allAvg) : "—"} isMobile={isMobile} />
         </div>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
-        {comps.map((comp) => <CompCard key={comp.id} comp={comp} onUpdate={(u) => onUpdateComp(comp.id, u)} onDelete={() => onDeleteComp(comp.id)} />)}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, marginBottom: 14 }}>
+        {comps.map((comp) => <CompCard key={comp.id} comp={comp} onUpdate={(u) => onUpdateComp(comp.id, u)} onDelete={() => onDeleteComp(comp.id)} isMobile={isMobile} />)}
       </div>
       {comps.length < 6 && (
-        <button onClick={onAddComp} style={{ width: "100%", background: "transparent", border: "1px dashed #1e293b", borderRadius: 8, color: "#334155", padding: "14px 0", fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+        <button type="button" onClick={onAddComp} style={{ width: "100%", background: "transparent", border: "1px dashed #1e293b", borderRadius: 8, color: "#334155", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 15 : 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
           + Add Comparable Sale {comps.length > 0 ? `(${comps.length}/6)` : ""}
         </button>
       )}
@@ -615,16 +653,16 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
 }
 
 // ─── Scope of Work Tab ────────────────────────────────────────────────────────
-function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete }: {
+function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete, isMobile = false }: {
   scopeItems: ScopeItem[]; address: string;
-  onAdd: () => void; onUpdate: (id: string, u: Partial<ScopeItem>) => void; onDelete: (id: string) => void;
+  onAdd: () => void; onUpdate: (id: string, u: Partial<ScopeItem>) => void; onDelete: (id: string) => void; isMobile?: boolean;
 }) {
   const totalEstimate = scopeItems.reduce((s, i) => s + i.myEstimate, 0);
   const byCategory = SCOPE_CATEGORIES.map((cat) => ({ cat, items: scopeItems.filter((i) => i.category === cat) })).filter((g) => g.items.length > 0);
   const criticalTotal = scopeItems.filter((i) => i.priority === "critical").reduce((s, i) => s + i.myEstimate, 0);
   const importantTotal = scopeItems.filter((i) => i.priority === "important").reduce((s, i) => s + i.myEstimate, 0);
   const optionalTotal = scopeItems.filter((i) => i.priority === "optional").reduce((s, i) => s + i.myEstimate, 0);
-  const fs = { background: "#060b14", border: "1px solid #1e293b", borderRadius: 4, color: "#f1f5f9", padding: "6px 8px", fontSize: 12, fontFamily: "monospace", outline: "none", boxSizing: "border-box" as const };
+  const fs = { background: "#060b14", border: "1px solid #1e293b", borderRadius: 4, color: "#f1f5f9", padding: isMobile ? "12px 10px" : "6px 8px", fontSize: isMobile ? 15 : 12, fontFamily: "monospace", outline: "none", boxSizing: "border-box" as const, minHeight: isMobile ? 44 : undefined, width: "100%" as const };
 
   const handlePrintBlind = () => {
     const pw = window.open("", "_blank");
@@ -660,11 +698,11 @@ function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete }: {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 24 }}>
+    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 320px", gap: isMobile ? 20 : 24 }}>
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", textTransform: "uppercase" }}>Scope Items ({scopeItems.length})</div>
-          <button onClick={onAdd} style={{ background: "#1d4ed8", border: "none", borderRadius: 6, color: "#fff", padding: "8px 16px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>+ Add Item</button>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 12 : 0, marginBottom: 16 }}>
+          <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", textTransform: "uppercase" }}>Scope Items ({scopeItems.length})</div>
+          <button type="button" onClick={onAdd} style={{ width: isMobile ? "100%" : "auto", background: "#1d4ed8", border: "none", borderRadius: 6, color: "#fff", padding: isMobile ? "14px 16px" : "8px 16px", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : 11, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>+ Add Item</button>
         </div>
         {scopeItems.length === 0 && <div style={{ background: "#0a0f1a", border: "1px dashed #1e293b", borderRadius: 8, padding: 40, textAlign: "center", color: "#334155", fontSize: 13 }}>No scope items yet. Use the AI Walkthrough tab to auto-populate, or click "+ Add Item".</div>}
         {byCategory.map((group) => (
@@ -679,14 +717,14 @@ function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete }: {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                     <div style={{ display: "flex", gap: 6 }}>
                       {(["critical", "important", "optional"] as const).map((p) => (
-                        <button key={p} onClick={() => onUpdate(item.id, { priority: p })} style={{ padding: "3px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif", border: `1px solid ${item.priority === p ? PRIORITY_STYLES[p].border : "#1e293b"}`, background: item.priority === p ? PRIORITY_STYLES[p].bg : "transparent", color: item.priority === p ? PRIORITY_STYLES[p].color : "#475569" }}>
+                        <button type="button" key={p} onClick={() => onUpdate(item.id, { priority: p })} style={{ padding: isMobile ? "10px 12px" : "3px 8px", minHeight: isMobile ? 44 : undefined, borderRadius: 4, fontSize: isMobile ? 12 : 10, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif", border: `1px solid ${item.priority === p ? PRIORITY_STYLES[p].border : "#1e293b"}`, background: item.priority === p ? PRIORITY_STYLES[p].bg : "transparent", color: item.priority === p ? PRIORITY_STYLES[p].color : "#475569" }}>
                           {PRIORITY_STYLES[p].label}
                         </button>
                       ))}
                     </div>
-                    <button onClick={() => onDelete(item.id)} style={{ background: "transparent", border: "none", color: "#334155", cursor: "pointer", fontSize: 16 }}>×</button>
+                    <button type="button" onClick={() => onDelete(item.id)} style={{ background: "transparent", border: "none", color: "#334155", cursor: "pointer", fontSize: 18, minWidth: 44, minHeight: 44 }} aria-label="Delete item">×</button>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "180px 1fr", gap: 8, marginBottom: 8 }}>
                     <div>
                       <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>Category</div>
                       <select value={item.category} onChange={(e) => onUpdate(item.id, { category: e.target.value })} style={{ ...fs, width: "100%", cursor: "pointer", color: "#94a3b8" }}>
@@ -698,24 +736,24 @@ function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete }: {
                       <input type="text" value={item.description} onChange={(e) => onUpdate(item.id, { description: e.target.value })} style={{ ...fs, width: "100%", color: "#f1f5f9" }} />
                     </div>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "80px 100px 1fr 160px", gap: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "80px 100px 1fr 160px", gap: 8 }}>
                     <div>
-                      <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>Qty</div>
+                      <div style={{ fontSize: isMobile ? 11 : 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>Qty</div>
                       <input type="number" value={item.quantity || ""} onChange={(e) => onUpdate(item.id, { quantity: parseFloat(e.target.value) || 1 })} style={{ ...fs, width: "100%" }} />
                     </div>
                     <div>
-                      <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>Unit</div>
+                      <div style={{ fontSize: isMobile ? 11 : 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>Unit</div>
                       <input type="text" value={item.unit} onChange={(e) => onUpdate(item.id, { unit: e.target.value })} style={{ ...fs, width: "100%", color: "#94a3b8" }} />
                     </div>
-                    <div>
-                      <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>Notes</div>
+                    <div style={{ gridColumn: isMobile ? "1 / -1" : undefined }}>
+                      <div style={{ fontSize: isMobile ? 11 : 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>Notes</div>
                       <input type="text" value={item.notes} onChange={(e) => onUpdate(item.id, { notes: e.target.value })} style={{ ...fs, width: "100%", color: "#64748b" }} />
                     </div>
-                    <div>
-                      <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>My Estimate</div>
-                      <div style={{ display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #334155", borderRadius: 4, overflow: "hidden" }}>
-                        <span style={{ padding: "6px 8px", color: "#334155", fontSize: 12, background: "#0a0f1a", borderRight: "1px solid #1e293b" }}>$</span>
-                        <input type="number" value={item.myEstimate || ""} onChange={(e) => onUpdate(item.id, { myEstimate: parseFloat(e.target.value) || 0 })} style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#475569", padding: "6px 8px", fontSize: 12, fontFamily: "monospace" }} />
+                    <div style={{ gridColumn: isMobile ? "1 / -1" : undefined }}>
+                      <div style={{ fontSize: isMobile ? 11 : 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>My Estimate</div>
+                      <div style={{ display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #334155", borderRadius: 4, overflow: "hidden", minHeight: isMobile ? 44 : undefined }}>
+                        <span style={{ padding: isMobile ? "12px 10px" : "6px 8px", color: "#334155", fontSize: isMobile ? 14 : 12, background: "#0a0f1a", borderRight: "1px solid #1e293b" }}>$</span>
+                        <input type="number" value={item.myEstimate || ""} onChange={(e) => onUpdate(item.id, { myEstimate: parseFloat(e.target.value) || 0 })} style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: "#475569", padding: isMobile ? "12px 10px" : "6px 8px", fontSize: isMobile ? 16 : 12, fontFamily: "monospace" }} />
                       </div>
                     </div>
                   </div>
@@ -744,7 +782,7 @@ function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete }: {
           <div style={{ fontSize: 11, color: "#f59e0b", fontWeight: 700, marginBottom: 6 }}>🔒 Blind Export</div>
           <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.6 }}>Your estimates are hidden from contractors. They bid blind — no anchoring to your numbers.</div>
         </div>
-        <button onClick={handlePrintBlind} style={{ width: "100%", background: "linear-gradient(135deg, #d97706, #b45309)", border: "none", borderRadius: 8, color: "#fff", padding: "14px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8 }}>
+        <button type="button" onClick={handlePrintBlind} style={{ width: "100%", background: "linear-gradient(135deg, #d97706, #b45309)", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 15 : 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8 }}>
           🖨 PRINT BLIND SOW
         </button>
       </div>
@@ -753,8 +791,8 @@ function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete }: {
 }
 
 // ─── Lender Packet Tab ────────────────────────────────────────────────────────
-function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo }: {
-  deal: Deal; metrics: DealMetrics; lenderInfo: LenderInfo; onUpdateLenderInfo: (u: Partial<LenderInfo>) => void;
+function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo, isMobile = false }: {
+  deal: Deal; metrics: DealMetrics; lenderInfo: LenderInfo; onUpdateLenderInfo: (u: Partial<LenderInfo>) => void; isMobile?: boolean;
 }) {
   const { weightedArv } = calculateCompARV(deal.comps, deal.subjectSqft);
   const inputs = deal.inputs;
@@ -814,30 +852,30 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo }: {
 
   const tf = (label: string, key: keyof LenderInfo) => (
     <div style={{ marginBottom: 12 }}>
-      <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</label>
+      <label style={{ display: "block", fontSize: isMobile ? 12 : 11, color: "#94a3b8", marginBottom: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</label>
       <input type="text" value={lenderInfo[key]} onChange={(e) => onUpdateLenderInfo({ [key]: e.target.value })} placeholder={`Enter ${label.toLowerCase()}...`}
-        style={{ width: "100%", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "8px 10px", fontSize: 13, outline: "none", boxSizing: "border-box" as const }} />
+        style={{ width: "100%", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: isMobile ? "12px 14px" : "8px 10px", fontSize: isMobile ? 16 : 13, outline: "none", boxSizing: "border-box" as const, minHeight: isMobile ? 44 : undefined }} />
     </div>
   );
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 24 }}>
+    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "280px 1fr", gap: isMobile ? 20 : 24 }}>
       <div>
-        <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Packet Info</div>
+        <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Packet Info</div>
         <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, marginBottom: 14 }}>
           {tf("Investor Name", "investorName")}{tf("Company", "investorCompany")}{tf("Phone", "investorPhone")}{tf("Email", "investorEmail")}
         </div>
         <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, marginBottom: 14 }}>
           {tf("Lender / Recipient Name", "lenderName")}
         </div>
-        <button onClick={handlePrint} style={{ width: "100%", background: "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: "14px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+        <button type="button" onClick={handlePrint} style={{ width: "100%", background: "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 15 : 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
           🖨 PRINT / SAVE AS PDF
         </button>
       </div>
       <div>
-        <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Preview</div>
-        <div style={{ background: "#fff", borderRadius: 8, border: "1px solid #1e293b", padding: 24, color: "#1a202c", fontSize: 11 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, paddingBottom: 12, borderBottom: "3px solid #1e3a5f" }}>
+        <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Preview</div>
+        <div style={{ background: "#fff", borderRadius: 8, border: "1px solid #1e293b", padding: isMobile ? 16 : 24, color: "#1a202c", fontSize: isMobile ? 12 : 11, overflow: "auto" }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", gap: isMobile ? 12 : 0, marginBottom: 16, paddingBottom: 12, borderBottom: "3px solid #1e3a5f" }}>
             <div>
               <div style={{ fontSize: 18, fontWeight: 700, color: "#1e3a5f" }}>FLIP<span style={{ color: "#2563eb" }}>LOGIC</span> AI</div>
               {lenderInfo.investorName && <div style={{ fontSize: 11, fontWeight: 600, marginTop: 5 }}>{lenderInfo.investorName}</div>}
@@ -850,11 +888,11 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo }: {
           <div style={{ background: "#f8fafc", borderRadius: 5, padding: "10px 14px", marginBottom: 14 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{inputs.propertyAddress || "Property Address"}</div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)", gap: 8 }}>
             {[{ l: "Net Profit", v: fmt(metrics.netProfit), hi: true }, { l: "ROI", v: fmtPct(metrics.roi), hi: true }, { l: "LTV", v: fmtPct(metrics.ltv) }, { l: "LTC", v: fmtPct(metrics.ltc) }].map((m) => (
-              <div key={m.l} style={{ background: m.hi ? "#eff6ff" : "#f8fafc", border: `1px solid ${m.hi ? "#bfdbfe" : "#e2e8f0"}`, borderRadius: 4, padding: "8px 10px" }}>
-                <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase", marginBottom: 3 }}>{m.l}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: m.hi ? "#1d4ed8" : "#1e293b", fontFamily: "monospace" }}>{m.v}</div>
+              <div key={m.l} style={{ background: m.hi ? "#eff6ff" : "#f8fafc", border: `1px solid ${m.hi ? "#bfdbfe" : "#e2e8f0"}`, borderRadius: 4, padding: isMobile ? "10px 10px" : "8px 10px" }}>
+                <div style={{ fontSize: isMobile ? 10 : 9, color: "#64748b", textTransform: "uppercase", marginBottom: 3 }}>{m.l}</div>
+                <div style={{ fontSize: isMobile ? 15 : 14, fontWeight: 700, color: m.hi ? "#1d4ed8" : "#1e293b", fontFamily: "monospace" }}>{m.v}</div>
               </div>
             ))}
           </div>
@@ -865,15 +903,38 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo }: {
 }
 
 // ─── Deals Sidebar ────────────────────────────────────────────────────────────
-function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmail, onSignOut, syncing }: {
+function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmail, onSignOut, syncing, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
   deals: Deal[]; activeDealId: string; onSelect: (id: string) => void; onNew: () => void; onDelete: (id: string) => void;
   userEmail: string; onSignOut: () => void; syncing: boolean;
+  variant?: "sidebar" | "drawer"; drawerOpen?: boolean; onCloseDrawer?: () => void;
 }) {
+  const isDrawer = variant === "drawer";
+  const shell: CSSProperties = isDrawer
+    ? {
+        position: "fixed", left: 0, top: 0, height: "100dvh", width: "min(300px, 88vw)", zIndex: 300,
+        background: "#060b14", borderRight: "1px solid #1e293b", display: "flex", flexDirection: "column",
+        transform: drawerOpen ? "translateX(0)" : "translateX(-100%)", transition: "transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)",
+        boxShadow: drawerOpen ? "12px 0 40px rgba(0,0,0,0.5)" : "none", overflowY: "auto", WebkitOverflowScrolling: "touch",
+      }
+    : { width: 240, flexShrink: 0, background: "#060b14", borderRight: "1px solid #1e293b", display: "flex", flexDirection: "column", height: "100vh", position: "sticky", top: 0, overflowY: "auto" };
+
+  const pickDeal = (id: string) => {
+    onSelect(id);
+    if (isDrawer) onCloseDrawer?.();
+  };
+
   return (
-    <div style={{ width: 240, flexShrink: 0, background: "#060b14", borderRight: "1px solid #1e293b", display: "flex", flexDirection: "column", height: "100vh", position: "sticky", top: 0, overflowY: "auto" }}>
-      <div style={{ padding: "16px 14px 10px", borderBottom: "1px solid #1e293b" }}>
-        <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>My Deals ({deals.length})</div>
-        <button onClick={onNew} style={{ width: "100%", background: "#1d4ed8", border: "none", borderRadius: 6, color: "#fff", padding: "9px 0", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>+ NEW DEAL</button>
+    <div style={shell}>
+      {isDrawer && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#f1f5f9", letterSpacing: "0.06em" }}>MY DEALS</span>
+          <button type="button" aria-label="Close menu" onClick={() => onCloseDrawer?.()} style={{ minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#94a3b8", fontSize: 22, lineHeight: 1, cursor: "pointer" }}>×</button>
+        </div>
+      )}
+      <div style={{ padding: isDrawer ? "12px 14px 10px" : "16px 14px 10px", borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
+        {!isDrawer && <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>My Deals ({deals.length})</div>}
+        {isDrawer && <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>({deals.length})</div>}
+        <button type="button" onClick={() => { onNew(); if (isDrawer) onCloseDrawer?.(); }} style={{ width: "100%", background: "#1d4ed8", border: "none", borderRadius: 6, color: "#fff", padding: isDrawer ? "12px 0" : "9px 0", minHeight: isDrawer ? 44 : undefined, fontSize: isDrawer ? 13 : 12, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>+ NEW DEAL</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
         {deals.map((deal) => {
@@ -881,24 +942,24 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmai
           const score = SCORE_STYLES[m.dealScore];
           const isActive = deal.id === activeDealId;
           return (
-            <div key={deal.id} onClick={() => onSelect(deal.id)} style={{ padding: "10px 14px", cursor: "pointer", background: isActive ? "#0d1829" : "transparent", borderLeft: isActive ? "2px solid #3b82f6" : "2px solid transparent", borderBottom: "1px solid #0f172a" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <div style={{ fontSize: 12, color: isActive ? "#f1f5f9" : "#94a3b8", fontWeight: isActive ? 700 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{deal.inputs.propertyAddress || "Unnamed Property"}</div>
-                <div style={{ fontSize: 10, fontWeight: 700, padding: "2px 5px", borderRadius: 3, background: score.bg, color: score.text, border: `1px solid ${score.border}`, flexShrink: 0, marginLeft: 4 }}>{m.dealScore}</div>
+            <div key={deal.id} onClick={() => pickDeal(deal.id)} style={{ padding: "12px 14px", cursor: "pointer", background: isActive ? "#0d1829" : "transparent", borderLeft: isActive ? "2px solid #3b82f6" : "2px solid transparent", borderBottom: "1px solid #0f172a" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, gap: 8 }}>
+                <div style={{ fontSize: isDrawer ? 13 : 12, color: isActive ? "#f1f5f9" : "#94a3b8", fontWeight: isActive ? 700 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{deal.inputs.propertyAddress || "Unnamed Property"}</div>
+                <div style={{ fontSize: 10, fontWeight: 700, padding: "2px 5px", borderRadius: 3, background: score.bg, color: score.text, border: `1px solid ${score.border}`, flexShrink: 0 }}>{m.dealScore}</div>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <div style={{ fontSize: 11, color: "#22c55e", fontFamily: "monospace" }}>{m.netProfit !== 0 ? fmt(m.netProfit) : "—"}</div>
+                <div style={{ fontSize: 12, color: "#22c55e", fontFamily: "monospace" }}>{m.netProfit !== 0 ? fmt(m.netProfit) : "—"}</div>
                 <div style={{ fontSize: 10, color: STATUS_STYLES[deal.inputs.dealStatus].color }}>{deal.inputs.dealStatus.charAt(0).toUpperCase() + deal.inputs.dealStatus.slice(1)}</div>
               </div>
-              {isActive && <button onClick={(e) => { e.stopPropagation(); onDelete(deal.id); }} style={{ marginTop: 6, background: "transparent", border: "1px solid #2a0a0a", color: "#f87171", borderRadius: 4, padding: "3px 8px", fontSize: 10, cursor: "pointer", width: "100%", fontFamily: "'Syne', sans-serif" }}>Delete Deal</button>}
+              {isActive && <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(deal.id); }} style={{ marginTop: 8, background: "transparent", border: "1px solid #2a0a0a", color: "#f87171", borderRadius: 4, padding: "10px 8px", fontSize: 11, cursor: "pointer", width: "100%", minHeight: 44, fontFamily: "'Syne', sans-serif" }}>Delete Deal</button>}
             </div>
           );
         })}
       </div>
-      <div style={{ padding: "12px 14px", borderTop: "1px solid #1e293b" }}>
-        <div style={{ fontSize: 10, color: syncing ? "#f59e0b" : "#22c55e", marginBottom: 6, textAlign: "center" }}>{syncing ? "⟳ Saving..." : "✓ Synced to cloud"}</div>
-        <div style={{ fontSize: 10, color: "#334155", marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>{userEmail}</div>
-        <button onClick={onSignOut} style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 4, color: "#475569", padding: "6px 0", fontSize: 10, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>Sign Out</button>
+      <div style={{ padding: "12px 14px", borderTop: "1px solid #1e293b", flexShrink: 0 }}>
+        <div style={{ fontSize: 11, color: syncing ? "#f59e0b" : "#22c55e", marginBottom: 6, textAlign: "center" }}>{syncing ? "⟳ Saving..." : "✓ Synced to cloud"}</div>
+        <div style={{ fontSize: 11, color: "#334155", marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>{userEmail}</div>
+        <button type="button" onClick={() => { onSignOut(); if (isDrawer) onCloseDrawer?.(); }} style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#475569", padding: "12px 0", minHeight: 44, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>Sign Out</button>
       </div>
     </div>
   );
@@ -913,7 +974,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"deal" | "ai" | "comps" | "rental" | "stress" | "scope" | "packet">("deal");
   const [syncing, setSyncing] = useState(false);
   const [dbLoading, setDbLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const isMobile = useIsMobile();
   const saveTimer = useRef<any>(null);
+
+  useEffect(() => {
+    if (isMobile && sidebarOpen) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
+    return () => { document.body.style.overflow = ""; };
+  }, [isMobile, sidebarOpen]);
 
   // ─── Auth listener ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1145,7 +1214,7 @@ export default function App() {
 
   if (!activeDeal) return (
     <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <button onClick={handleNewDeal} style={{ background: "#1d4ed8", border: "none", color: "#fff", padding: "16px 32px", borderRadius: 8, fontSize: 16, cursor: "pointer" }}>+ Start Your First Deal</button>
+      <button type="button" onClick={handleNewDeal} style={{ background: "#1d4ed8", border: "none", color: "#fff", padding: "16px 24px", borderRadius: 8, fontSize: 16, cursor: "pointer", minHeight: 48, width: "min(100%, 320px)" }}>+ Start Your First Deal</button>
     </div>
   );
 
@@ -1160,75 +1229,102 @@ export default function App() {
   ] as const;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#060b14", color: "#f1f5f9", fontFamily: "'Syne', sans-serif", display: "flex" }}>
-      <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleNewDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto" }}>
+    <div style={{ minHeight: "100vh", background: "#060b14", color: "#f1f5f9", fontFamily: "'Syne', sans-serif", display: "flex", position: "relative" }}>
+      {isMobile && (
+        <button
+          type="button"
+          aria-hidden={!sidebarOpen}
+          tabIndex={sidebarOpen ? 0 : -1}
+          onClick={() => setSidebarOpen(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 250, border: "none", padding: 0, margin: 0,
+            background: sidebarOpen ? "rgba(0,0,0,0.5)" : "transparent",
+            opacity: sidebarOpen ? 1 : 0,
+            pointerEvents: sidebarOpen ? "auto" : "none",
+            transition: "opacity 0.25s ease, background 0.25s ease",
+          }}
+        />
+      )}
+      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleNewDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} variant="sidebar" />}
+      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleNewDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", minWidth: 0 }}>
         {/* Header */}
-        <div style={{ background: "linear-gradient(135deg, #060b14 0%, #0d1829 100%)", borderBottom: "1px solid #1e293b", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em" }}>FLIP<span style={{ color: "#3b82f6" }}>LOGIC</span> AI</div>
-            <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.15em", marginTop: 1 }}>COMMAND CENTER · DEAL ANALYZER</div>
+        <div style={{ background: "linear-gradient(135deg, #060b14 0%, #0d1829 100%)", borderBottom: "1px solid #1e293b", padding: isMobile ? "12px 14px" : "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
+            {isMobile && (
+              <button type="button" aria-label="Open deals menu" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)} style={{ flexShrink: 0, minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#f1f5f9", fontSize: 20, cursor: "pointer", padding: 0 }}>
+                ☰
+              </button>
+            )}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: isMobile ? 17 : 20, fontWeight: 800, letterSpacing: "-0.02em" }}>FLIP<span style={{ color: "#3b82f6" }}>LOGIC</span> AI</div>
+              <div style={{ fontSize: isMobile ? 9 : 10, color: "#475569", letterSpacing: "0.12em", marginTop: 2 }}>COMMAND CENTER · DEAL ANALYZER</div>
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <select value={inputs.dealStatus} onChange={(e) => set("dealStatus")(e.target.value)} style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 6, color: STATUS_STYLES[inputs.dealStatus].color, padding: "6px 10px", fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", width: isMobile ? "100%" : "auto", justifyContent: isMobile ? "stretch" : "flex-end" }}>
+            <select value={inputs.dealStatus} onChange={(e) => set("dealStatus")(e.target.value)} style={{ flex: isMobile ? 1 : "none", minWidth: 0, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 6, color: STATUS_STYLES[inputs.dealStatus].color, padding: isMobile ? "12px 12px" : "6px 10px", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 14 : 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
               <option value="prospect">Prospect</option><option value="active">Active</option><option value="closed">Closed</option><option value="passed">Passed</option>
             </select>
-            <div style={{ background: scoreStyle.bg, border: `2px solid ${scoreStyle.border}`, borderRadius: 8, padding: "8px 16px", textAlign: "center" }}>
-              <div style={{ fontSize: 9, color: scoreStyle.text, letterSpacing: "0.15em", marginBottom: 1 }}>DEAL SCORE</div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: scoreStyle.text }}>{metrics.dealScore}</div>
+            <div style={{ background: scoreStyle.bg, border: `2px solid ${scoreStyle.border}`, borderRadius: 8, padding: isMobile ? "8px 12px" : "8px 16px", textAlign: "center", minWidth: isMobile ? 88 : undefined }}>
+              <div style={{ fontSize: isMobile ? 8 : 9, color: scoreStyle.text, letterSpacing: "0.15em", marginBottom: 1 }}>DEAL SCORE</div>
+              <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: scoreStyle.text }}>{metrics.dealScore}</div>
             </div>
           </div>
         </div>
 
         {/* Address */}
-        <div style={{ padding: "10px 24px", background: "#0a0f1a", borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
+        <div style={{ padding: isMobile ? "12px 14px" : "10px 24px", background: "#0a0f1a", borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
           <input type="text" value={inputs.propertyAddress} onChange={(e) => set("propertyAddress")(e.target.value)} placeholder="Enter property address..."
-            style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "#94a3b8", fontSize: 13, fontFamily: "monospace", boxSizing: "border-box" }} />
+            style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "#94a3b8", fontSize: isMobile ? 15 : 13, fontFamily: "monospace", boxSizing: "border-box", minHeight: isMobile ? 44 : undefined, padding: isMobile ? "4px 0" : 0 }} />
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", borderBottom: "1px solid #1e293b", background: "#0a0f1a", flexShrink: 0, overflowX: "auto" }}>
+        <div style={{ display: "flex", borderBottom: "1px solid #1e293b", background: "#0a0f1a", flexShrink: 0, overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarGutter: "stable", padding: isMobile ? "4px 8px" : "0 4px", gap: isMobile ? 4 : 0 }}>
           {TABS.map((tab) => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-              style={{ padding: "11px 14px", background: "transparent", border: "none", borderBottom: activeTab === tab.key ? "2px solid #3b82f6" : "2px solid transparent", color: activeTab === tab.key ? "#60a5fa" : "#475569", cursor: "pointer", fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
+            <button type="button" key={tab.key} onClick={() => setActiveTab(tab.key)}
+              style={{
+                flexShrink: 0, padding: isMobile ? "12px 18px" : "11px 14px", minHeight: isMobile ? 44 : undefined,
+                background: "transparent", border: "none", borderBottom: activeTab === tab.key ? "2px solid #3b82f6" : "2px solid transparent",
+                color: activeTab === tab.key ? "#60a5fa" : "#475569", cursor: "pointer", fontSize: isMobile ? 12 : 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap",
+              }}>
               {tab.label}
             </button>
           ))}
         </div>
 
         {/* Content */}
-        <div style={{ padding: "20px 24px", flex: 1, overflow: "auto" }}>
+        <div style={{ padding: isMobile ? "16px 14px 24px" : "20px 24px", flex: 1, overflow: "auto" }}>
 
           {activeTab === "deal" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 20 : 24 }}>
               <div>
-                <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Deal Inputs</div>
-                <InputField label="Purchase Price" value={inputs.purchasePrice} onChange={set("purchasePrice")} />
-                <InputField label="Rehab Cost" value={inputs.rehabCost} onChange={set("rehabCost")} />
-                <InputField label="After Repair Value (ARV)" value={inputs.arv} onChange={set("arv")} />
-                <InputField label="Loan Amount" value={inputs.loanAmount} onChange={set("loanAmount")} />
-                <InputField label="Interest Rate" value={inputs.interestRate} onChange={set("interestRate")} prefix="%" suffix="APR" />
-                <InputField label="Loan Term" value={inputs.loanTermMonths} onChange={set("loanTermMonths")} prefix="" suffix="mo" />
-                <InputField label="Projected Hold Time" value={inputs.holdingMonths} onChange={set("holdingMonths")} prefix="" suffix="mo" />
-                <InputField label="Closing Costs (Buy)" value={inputs.closingCostsBuy} onChange={set("closingCostsBuy")} />
-                <InputField label="Closing Costs (Sell)" value={inputs.closingCostsSell} onChange={set("closingCostsSell")} />
+                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Deal Inputs</div>
+                <InputField label="Purchase Price" value={inputs.purchasePrice} onChange={set("purchasePrice")} isMobile={isMobile} />
+                <InputField label="Rehab Cost" value={inputs.rehabCost} onChange={set("rehabCost")} isMobile={isMobile} />
+                <InputField label="After Repair Value (ARV)" value={inputs.arv} onChange={set("arv")} isMobile={isMobile} />
+                <InputField label="Loan Amount" value={inputs.loanAmount} onChange={set("loanAmount")} isMobile={isMobile} />
+                <InputField label="Interest Rate" value={inputs.interestRate} onChange={set("interestRate")} prefix="%" suffix="APR" isMobile={isMobile} />
+                <InputField label="Loan Term" value={inputs.loanTermMonths} onChange={set("loanTermMonths")} prefix="" suffix="mo" isMobile={isMobile} />
+                <InputField label="Projected Hold Time" value={inputs.holdingMonths} onChange={set("holdingMonths")} prefix="" suffix="mo" isMobile={isMobile} />
+                <InputField label="Closing Costs (Buy)" value={inputs.closingCostsBuy} onChange={set("closingCostsBuy")} isMobile={isMobile} />
+                <InputField label="Closing Costs (Sell)" value={inputs.closingCostsSell} onChange={set("closingCostsSell")} isMobile={isMobile} />
                 <div style={{ marginTop: 4 }}>
-                  <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 4, letterSpacing: "0.08em", textTransform: "uppercase" }}>Field Notes</label>
-                  <textarea value={inputs.notes} onChange={(e) => set("notes")(e.target.value)} placeholder="Walkthrough observations, red flags, contractor notes..." rows={4}
-                    style={{ width: "100%", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#94a3b8", padding: "10px", fontSize: 13, fontFamily: "monospace", resize: "vertical", outline: "none", boxSizing: "border-box" }} />
+                  <label style={{ display: "block", fontSize: isMobile ? 12 : 11, color: "#94a3b8", marginBottom: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>Field Notes</label>
+                  <textarea value={inputs.notes} onChange={(e) => set("notes")(e.target.value)} placeholder="Walkthrough observations, red flags, contractor notes..." rows={isMobile ? 5 : 4}
+                    style={{ width: "100%", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#94a3b8", padding: isMobile ? "14px 12px" : "10px", fontSize: isMobile ? 15 : 13, fontFamily: "monospace", resize: "vertical", outline: "none", boxSizing: "border-box", minHeight: isMobile ? 120 : undefined }} />
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Key Metrics</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                  <MetricCard label="Net Profit" value={fmt(metrics.netProfit)} highlight />
-                  <MetricCard label="ROI" value={fmtPct(metrics.roi)} highlight />
-                  <MetricCard label="LTC" value={fmtPct(metrics.ltc)} sub="Loan to Cost" />
-                  <MetricCard label="LTV" value={fmtPct(metrics.ltv)} sub="Loan to Value" />
-                  <MetricCard label="Monthly Payment" value={fmt(metrics.monthlyPayment)} />
-                  <MetricCard label="Total Holding Costs" value={fmt(metrics.totalHoldingCosts)} />
-                  <MetricCard label="Gross Profit" value={fmt(metrics.grossProfit)} />
-                  <MetricCard label="Total Project Cost" value={fmt(metrics.totalProjectCost)} />
+                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Key Metrics</div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                  <MetricCard label="Net Profit" value={fmt(metrics.netProfit)} highlight isMobile={isMobile} />
+                  <MetricCard label="ROI" value={fmtPct(metrics.roi)} highlight isMobile={isMobile} />
+                  <MetricCard label="LTC" value={fmtPct(metrics.ltc)} sub="Loan to Cost" isMobile={isMobile} />
+                  <MetricCard label="LTV" value={fmtPct(metrics.ltv)} sub="Loan to Value" isMobile={isMobile} />
+                  <MetricCard label="Monthly Payment" value={fmt(metrics.monthlyPayment)} isMobile={isMobile} />
+                  <MetricCard label="Total Holding Costs" value={fmt(metrics.totalHoldingCosts)} isMobile={isMobile} />
+                  <MetricCard label="Gross Profit" value={fmt(metrics.grossProfit)} isMobile={isMobile} />
+                  <MetricCard label="Total Project Cost" value={fmt(metrics.totalProjectCost)} isMobile={isMobile} />
                 </div>
                 <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
@@ -1247,10 +1343,10 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === "ai" && <AIWalkthroughTab address={inputs.propertyAddress} buildYear={1970} onAddToScope={handleAddAIToScope} />}
+          {activeTab === "ai" && <AIWalkthroughTab address={inputs.propertyAddress} buildYear={1970} onAddToScope={handleAddAIToScope} isMobile={isMobile} />}
 
           {activeTab === "comps" && (
-            <CompsTab comps={activeDeal.comps} subjectSqft={activeDeal.subjectSqft} enteredArv={inputs.arv}
+            <CompsTab comps={activeDeal.comps} subjectSqft={activeDeal.subjectSqft} enteredArv={inputs.arv} isMobile={isMobile}
               onAddComp={() => updateDeal({ comps: [...activeDeal.comps, { id: uid(), address: "", salePrice: 0, sqft: 0, bedBath: "", daysOnMarket: 0, soldDate: "", strength: "average", notes: "" }] })}
               onUpdateComp={(id, u) => updateDeal({ comps: activeDeal.comps.map((c) => c.id === id ? { ...c, ...u } : c) })}
               onDeleteComp={(id) => updateDeal({ comps: activeDeal.comps.filter((c) => c.id !== id) })}
@@ -1259,22 +1355,22 @@ export default function App() {
           )}
 
           {activeTab === "rental" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 20 : 24 }}>
               <div>
-                <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Rental Inputs</div>
-                <InputField label="Monthly Rent" value={inputs.monthlyRent} onChange={set("monthlyRent")} />
-                <InputField label="Monthly Expenses" value={inputs.monthlyExpenses} onChange={set("monthlyExpenses")} />
-                <InputField label="Loan Amount (Refi)" value={inputs.loanAmount} onChange={set("loanAmount")} />
-                <InputField label="Interest Rate" value={inputs.interestRate} onChange={set("interestRate")} prefix="%" suffix="APR" />
-                <InputField label="Loan Term" value={inputs.loanTermMonths} onChange={set("loanTermMonths")} prefix="" suffix="mo" />
+                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Rental Inputs</div>
+                <InputField label="Monthly Rent" value={inputs.monthlyRent} onChange={set("monthlyRent")} isMobile={isMobile} />
+                <InputField label="Monthly Expenses" value={inputs.monthlyExpenses} onChange={set("monthlyExpenses")} isMobile={isMobile} />
+                <InputField label="Loan Amount (Refi)" value={inputs.loanAmount} onChange={set("loanAmount")} isMobile={isMobile} />
+                <InputField label="Interest Rate" value={inputs.interestRate} onChange={set("interestRate")} prefix="%" suffix="APR" isMobile={isMobile} />
+                <InputField label="Loan Term" value={inputs.loanTermMonths} onChange={set("loanTermMonths")} prefix="" suffix="mo" isMobile={isMobile} />
               </div>
               <div>
-                <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Rental Metrics</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <MetricCard label="DSCR" value={metrics.dscr.toFixed(2)} sub={metrics.dscr >= 1.25 ? "✓ Lender Ready" : metrics.dscr >= 1.0 ? "⚠ Borderline" : "✗ Below Threshold"} highlight={metrics.dscr >= 1.25} />
-                  <MetricCard label="Monthly Payment" value={fmt(metrics.monthlyPayment)} />
-                  <MetricCard label="Net Monthly Cash Flow" value={fmt(inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment)} highlight />
-                  <MetricCard label="Annual Cash Flow" value={fmt((inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment) * 12)} />
+                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Rental Metrics</div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+                  <MetricCard label="DSCR" value={metrics.dscr.toFixed(2)} sub={metrics.dscr >= 1.25 ? "✓ Lender Ready" : metrics.dscr >= 1.0 ? "⚠ Borderline" : "✗ Below Threshold"} highlight={metrics.dscr >= 1.25} isMobile={isMobile} />
+                  <MetricCard label="Monthly Payment" value={fmt(metrics.monthlyPayment)} isMobile={isMobile} />
+                  <MetricCard label="Net Monthly Cash Flow" value={fmt(inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment)} highlight isMobile={isMobile} />
+                  <MetricCard label="Annual Cash Flow" value={fmt((inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment) * 12)} isMobile={isMobile} />
                 </div>
                 <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 14, marginTop: 10 }}>
                   <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
@@ -1296,13 +1392,15 @@ export default function App() {
 
           {activeTab === "stress" && (
             <div>
-              <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Sensitivity Stress Test</div>
-              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 16 }}>Best Case: rehab -10%, ARV +5% · Worst Case: rehab +20%, ARV -5%</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 80px", gap: 8, padding: "8px 14px" }}>
-                  {["Scenario", "Net Profit", "ROI", "Leverage", "Score"].map((h) => <div key={h} style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>{h}</div>)}
-                </div>
-                {SCENARIOS.map((s) => <ScenarioRow key={s.label} scenario={s} inputs={inputs} />)}
+              <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Sensitivity Stress Test</div>
+              <div style={{ fontSize: isMobile ? 13 : 12, color: "#64748b", marginBottom: 16, lineHeight: 1.5 }}>Best Case: rehab -10%, ARV +5% · Worst Case: rehab +20%, ARV -5%</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 10 : 8 }}>
+                {!isMobile && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 80px", gap: 8, padding: "8px 14px" }}>
+                    {["Scenario", "Net Profit", "ROI", "Leverage", "Score"].map((h) => <div key={h} style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>{h}</div>)}
+                  </div>
+                )}
+                {SCENARIOS.map((s) => <ScenarioRow key={s.label} scenario={s} inputs={inputs} isMobile={isMobile} />)}
               </div>
               <div style={{ marginTop: 24, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16 }}>
                 <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12 }}>Deal Health Check</div>
@@ -1318,7 +1416,7 @@ export default function App() {
 
           {activeTab === "scope" && (
             <ScopeOfWorkTab
-              scopeItems={activeDeal.scopeItems} address={inputs.propertyAddress}
+              scopeItems={activeDeal.scopeItems} address={inputs.propertyAddress} isMobile={isMobile}
               onAdd={() => updateDeal({ scopeItems: [...activeDeal.scopeItems, { id: uid(), category: "Other", description: "", quantity: 1, unit: "lot", myEstimate: 0, notes: "", priority: "important" }] })}
               onUpdate={(id, u) => updateDeal({ scopeItems: activeDeal.scopeItems.map((s) => s.id === id ? { ...s, ...u } : s) })}
               onDelete={(id) => updateDeal({ scopeItems: activeDeal.scopeItems.filter((s) => s.id !== id) })}
@@ -1326,7 +1424,7 @@ export default function App() {
           )}
 
           {activeTab === "packet" && (
-            <LenderPacketTab deal={activeDeal} metrics={metrics} lenderInfo={activeDeal.lenderInfo ?? BLANK_LENDER_INFO}
+            <LenderPacketTab deal={activeDeal} metrics={metrics} lenderInfo={activeDeal.lenderInfo ?? BLANK_LENDER_INFO} isMobile={isMobile}
               onUpdateLenderInfo={(u) => updateDeal({ lenderInfo: { ...(activeDeal.lenderInfo ?? BLANK_LENDER_INFO), ...u } })} />
           )}
         </div>
