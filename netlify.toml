@@ -1,0 +1,4 @@
+[build]
+base = "vitejs-vite-buku8hgk"
+command = "tsc -b && vite build"
+publish = "dist"
