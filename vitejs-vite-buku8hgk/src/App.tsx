@@ -468,10 +468,10 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false }
 
   const howItWorksByMode: Record<WalkthroughCaptureMode, { icon: string; text: string }[]> = {
     photos: [
-      { icon: "📸", text: "Upload photos of each room, exterior, roof, electrical panel, HVAC" },
-      { icon: "🤖", text: "Claude AI analyzes every image for repair needs and hazmat risks" },
-      { icon: "⚠", text: "Pre-1978 homes trigger lead paint warnings automatically" },
-      { icon: "📋", text: "Push findings directly to your Scope of Work with one click" },
+      { icon: "📸", text: "Upload photos or record audio, video, or both during your property walkthrough" },
+      { icon: "🎙️", text: "Speak naturally — say your trigger phrase to flag important items hands-free" },
+      { icon: "⚠", text: "Pre-1978 homes automatically trigger lead paint warnings" },
+      { icon: "📋", text: "Review AI findings, select what applies, and push directly to your Scope of Work" },
     ],
     audio: [
       { icon: "🎙️", text: "Record walkthrough audio in Opus (WebM). Screen stays awake while recording." },
