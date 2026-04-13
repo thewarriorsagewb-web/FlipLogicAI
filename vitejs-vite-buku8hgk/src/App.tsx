@@ -1294,6 +1294,9 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmai
                 <div style={{ fontSize: isDrawer ? 13 : 12, color: isActive ? "#f1f5f9" : "#94a3b8", fontWeight: isActive ? 700 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{deal.inputs.propertyAddress || "Unnamed Property"}</div>
                 <div style={{ fontSize: 10, fontWeight: 700, padding: "2px 5px", borderRadius: 3, background: score.bg, color: score.text, border: `1px solid ${score.border}`, flexShrink: 0 }}>{m.dealScore}</div>
               </div>
+              {deal.inputs.propertyAddress === "123 Main St, Atlanta, GA 30301" && (
+                <div style={{ fontSize: 9, color: "#475569", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 3, padding: "2px 6px", display: "inline-block", marginTop: 2, letterSpacing: "0.08em" }}>DEMO DEAL</div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <div style={{ fontSize: 12, color: "#22c55e", fontFamily: "monospace" }}>{m.netProfit !== 0 ? fmt(m.netProfit) : "—"}</div>
                 <div style={{ fontSize: 10, color: STATUS_STYLES[deal.inputs.dealStatus].color }}>{deal.inputs.dealStatus.charAt(0).toUpperCase() + deal.inputs.dealStatus.slice(1)}</div>
@@ -1677,6 +1680,11 @@ export default function App() {
           <input type="text" value={inputs.propertyAddress} onChange={(e) => set("propertyAddress")(e.target.value)} placeholder="Enter property address..."
             style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "#94a3b8", fontSize: isMobile ? 15 : 13, fontFamily: "monospace", boxSizing: "border-box", minHeight: isMobile ? 44 : undefined, padding: isMobile ? "4px 0" : 0 }} />
         </div>
+        {inputs.propertyAddress === "123 Main St, Atlanta, GA 30301" && (
+          <div style={{ padding: isMobile ? "6px 14px" : "6px 24px", background: "#0d1829", borderBottom: "1px solid #1e293b", fontSize: isMobile ? 11 : 10, color: "#475569", letterSpacing: "0.08em", flexShrink: 0 }}>
+            📋 This is a demo deal with sample data. Create a new deal to analyze a real property.
+          </div>
+        )}
 
         {/* Tabs */}
         <div style={{ display: "flex", borderBottom: "1px solid #1e293b", background: "#0a0f1a", flexShrink: 0, overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarGutter: "stable", padding: isMobile ? "4px 8px" : "0 4px", gap: isMobile ? 4 : 0 }}>
