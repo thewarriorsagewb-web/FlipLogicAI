@@ -953,20 +953,6 @@ function RentalPivotTab({ inputs, metrics, isMobile = false, rentalComps, setFie
           <MetricCard label="Net Monthly Cash Flow" value={fmt(inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment)} highlight isMobile={isMobile} />
           <MetricCard label="Annual Cash Flow" value={fmt((inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment) * 12)} isMobile={isMobile} />
         </div>
-        <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 14, marginTop: 10 }}>
-          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-            DSCR — Debt Service Coverage Ratio
-          </div>
-          <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, marginBottom: 12 }}>
-            DSCR tells lenders whether your rental income covers the loan payment. A score of 1.25 means you earn $1.25 for every $1.00 owed — lenders love this.
-          </div>
-          {[{ label: "1.25+ — Most lenders approve", color: "#22c55e" }, { label: "1.10–1.24 — Some lenders, higher rate", color: "#f59e0b" }, { label: "1.00–1.09 — Very limited options", color: "#f97316" }, { label: "Below 1.0 — Negative cash flow", color: "#ef4444" }].map((row) => (
-            <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: row.color, flexShrink: 0 }} />
-              <span style={{ fontSize: 12, color: "#94a3b8" }}>{row.label}</span>
-            </div>
-          ))}
-        </div>
         {rentalComps.length === 0 && (
           <div style={{ marginTop: 16, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16 }}>
             <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
@@ -994,6 +980,20 @@ function RentalPivotTab({ inputs, metrics, isMobile = false, rentalComps, setFie
             ))}
           </div>
         )}
+        <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 14, marginTop: 10 }}>
+          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+            DSCR — Debt Service Coverage Ratio
+          </div>
+          <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, marginBottom: 12 }}>
+            DSCR tells lenders whether your rental income covers the loan payment. A score of 1.25 means you earn $1.25 for every $1.00 owed — lenders love this.
+          </div>
+          {[{ label: "1.25+ — Most lenders approve", color: "#22c55e" }, { label: "1.10–1.24 — Some lenders, higher rate", color: "#f59e0b" }, { label: "1.00–1.09 — Very limited options", color: "#f97316" }, { label: "Below 1.0 — Negative cash flow", color: "#ef4444" }].map((row) => (
+            <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: row.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: "#94a3b8" }}>{row.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
