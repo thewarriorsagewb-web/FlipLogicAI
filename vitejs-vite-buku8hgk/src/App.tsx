@@ -31,6 +31,14 @@ interface Comp {
   strength: "strong" | "average" | "weak"; notes: string;
 }
 
+interface RentalComp {
+  id: string;
+  address: string;
+  monthlyRent: number;
+  bedBath: string;
+  distance: string;
+}
+
 interface ScopeItem {
   id: string; category: string; description: string;
   quantity: number; unit: string; myEstimate: number;
@@ -54,6 +62,7 @@ interface Deal {
   id: string; createdAt: string; updatedAt: string;
   inputs: DealInputs; comps: Comp[]; subjectSqft: number;
   lenderInfo: LenderInfo; scopeItems: ScopeItem[];
+  rentalComps: RentalComp[];
 }
 
 interface DealMetrics {
@@ -784,7 +793,7 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
   comps: Comp[]; subjectSqft: number; enteredArv: number;
   onAddComp: () => void; onUpdateComp: (id: string, u: Partial<Comp>) => void;
   onDeleteComp: (id: string) => void; onUpdateSubjectSqft: (v: number) => void; onApplyArv: (v: number) => void;
-  onRentCastSuccess: (newComps: Omit<Comp, "id">[], rentEstimate: number) => void;
+  onRentCastSuccess: (newComps: Omit<Comp, "id">[], rentEstimate: number, rentalComps: Omit<RentalComp, "id">[]) => void;
   supabase: SupabaseClient;
   dealId: string;
   propertyAddress: string;
@@ -821,13 +830,15 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
         error?: string;
         saleComps?: Omit<Comp, "id">[];
         rentEstimate?: number;
+        rentalComps?: Omit<RentalComp, "id">[];
       };
       if (payload.success === false && payload.error) throw new Error(payload.error);
       const saleList = payload.saleComps || [];
       const rentEst = typeof payload.rentEstimate === "number" ? payload.rentEstimate : 0;
+      const rentalCompsList = payload.rentalComps || [];
       const room = Math.max(0, 6 - comps.length);
       const toAdd = saleList.slice(0, room);
-      onRentCastSuccess(toAdd, rentEst);
+      onRentCastSuccess(toAdd, rentEst, rentalCompsList);
       setPullSuccess(`Pulled ${toAdd.length} sale comps and rent estimate of ${fmt(rentEst)} from RentCast`);
     } catch (e: unknown) {
       setPullError(e instanceof Error ? e.message : "Failed to pull comps");
@@ -912,6 +923,67 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
           + Add Comparable Sale {comps.length > 0 ? `(${comps.length}/6)` : ""}
         </button>
       )}
+    </div>
+  );
+}
+
+// ─── Rental Pivot Tab ─────────────────────────────────────────────────────────
+function RentalPivotTab({ inputs, metrics, isMobile = false, rentalComps, setField }: {
+  inputs: DealInputs;
+  metrics: DealMetrics;
+  isMobile?: boolean;
+  rentalComps: RentalComp[];
+  setField: (key: keyof DealInputs) => (value: number | string) => void;
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 20 : 24 }}>
+      <div>
+        <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Rental Inputs</div>
+        <InputField label="Monthly Rent" value={inputs.monthlyRent} onChange={setField("monthlyRent")} isMobile={isMobile} />
+        <InputField label="Monthly Expenses" value={inputs.monthlyExpenses} onChange={setField("monthlyExpenses")} isMobile={isMobile} />
+        <InputField label="Loan Amount (Refi)" value={inputs.loanAmount} onChange={setField("loanAmount")} isMobile={isMobile} />
+        <InputField label="Interest Rate" value={inputs.interestRate} onChange={setField("interestRate")} prefix="%" suffix="APR" isMobile={isMobile} />
+        <InputField label="Loan Term" value={inputs.loanTermMonths} onChange={setField("loanTermMonths")} prefix="" suffix="mo" isMobile={isMobile} />
+      </div>
+      <div>
+        <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Rental Metrics</div>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+          <MetricCard label="DSCR" value={metrics.dscr.toFixed(2)} sub={metrics.dscr >= 1.25 ? "✓ Lender Ready" : metrics.dscr >= 1.0 ? "⚠ Borderline" : "✗ Below Threshold"} highlight={metrics.dscr >= 1.25} isMobile={isMobile} />
+          <MetricCard label="Monthly Payment" value={fmt(metrics.monthlyPayment)} isMobile={isMobile} />
+          <MetricCard label="Net Monthly Cash Flow" value={fmt(inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment)} highlight isMobile={isMobile} />
+          <MetricCard label="Annual Cash Flow" value={fmt((inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment) * 12)} isMobile={isMobile} />
+        </div>
+        <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 14, marginTop: 10 }}>
+          <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+            DSCR — Debt Service Coverage Ratio
+          </div>
+          <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, marginBottom: 12 }}>
+            DSCR tells lenders whether your rental income covers the loan payment. A score of 1.25 means you earn $1.25 for every $1.00 owed — lenders love this.
+          </div>
+          {[{ label: "1.25+ — Most lenders approve", color: "#22c55e" }, { label: "1.10–1.24 — Some lenders, higher rate", color: "#f59e0b" }, { label: "1.00–1.09 — Very limited options", color: "#f97316" }, { label: "Below 1.0 — Negative cash flow", color: "#ef4444" }].map((row) => (
+            <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: row.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: "#94a3b8" }}>{row.label}</span>
+            </div>
+          ))}
+        </div>
+        {rentalComps.length > 0 && (
+          <div style={{ marginTop: 16, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16 }}>
+            <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
+              Rental Comps from RentCast ({rentalComps.length})
+            </div>
+            {rentalComps.map((r, i) => (
+              <div key={r.id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #0f172a", flexWrap: "wrap", gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: "#f1f5f9", marginBottom: 2 }}>{r.address}</div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>{r.bedBath}{r.distance ? ` · ${r.distance}` : ""}</div>
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#22c55e", fontFamily: "monospace" }}>{fmt(r.monthlyRent)}/mo</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1293,6 +1365,7 @@ export default function App() {
       const dealIds = dealsData.map((d: any) => d.id);
       const { data: compsData } = await supabase.from("comps").select("*").in("deal_id", dealIds);
       const { data: scopeData } = await supabase.from("scope_items").select("*").in("deal_id", dealIds);
+      const { data: rentalCompsData } = await supabase.from("rental_comps").select("*").in("deal_id", dealIds);
 
       const assembled: Deal[] = dealsData.map((d: any) => ({
         id: d.id,
@@ -1325,6 +1398,13 @@ export default function App() {
           id: s.id, category: s.category || "Other", description: s.description || "",
           quantity: s.quantity || 1, unit: s.unit || "lot", myEstimate: s.my_estimate || 0,
           notes: s.notes || "", priority: s.priority || "important",
+        })),
+        rentalComps: (rentalCompsData || []).filter((r: any) => r.deal_id === d.id).map((r: any) => ({
+          id: r.id,
+          address: r.address || "",
+          monthlyRent: Number(r.monthly_rent) || 0,
+          bedBath: r.bed_bath || "",
+          distance: r.distance || "",
         })),
       }));
 
@@ -1430,6 +1510,22 @@ export default function App() {
           { onConflict: "id" }
         );
       }
+
+      if (deal.rentalComps.length > 0) {
+        const { error: rentalUpsertError } = await supabase.from("rental_comps").upsert(
+          deal.rentalComps.map(r => ({
+            id: r.id,
+            deal_id: deal.id,
+            user_id: user.id,
+            address: r.address,
+            monthly_rent: r.monthlyRent,
+            bed_bath: r.bedBath,
+            distance: r.distance,
+          })),
+          { onConflict: "id" }
+        );
+        if (rentalUpsertError) console.error("Rental comps upsert error:", rentalUpsertError);
+      }
     } catch (err) {
       console.error("Save error:", err);
     }
@@ -1465,7 +1561,7 @@ export default function App() {
       notes: "", deal_status: "prospect", subject_sqft: 0, lender_info: BLANK_LENDER_INFO,
     }).select().single();
     if (error || !data) return;
-    const nd: Deal = { id: data.id, createdAt: data.created_at, updatedAt: data.updated_at, inputs: { ...BLANK_INPUTS }, comps: [], subjectSqft: 0, lenderInfo: { ...BLANK_LENDER_INFO }, scopeItems: [] };
+    const nd: Deal = { id: data.id, createdAt: data.created_at, updatedAt: data.updated_at, inputs: { ...BLANK_INPUTS }, comps: [], subjectSqft: 0, lenderInfo: { ...BLANK_LENDER_INFO }, scopeItems: [], rentalComps: [] };
     setDeals((prev) => [nd, ...prev]);
     setActiveDealId(nd.id);
     setActiveTab("deal");
@@ -1651,7 +1747,7 @@ export default function App() {
               }}
               onUpdateSubjectSqft={(v) => updateDeal({ subjectSqft: v })}
               onApplyArv={(v) => { updateInputs({ arv: v }); setActiveTab("deal"); }}
-              onRentCastSuccess={async (newComps, rentEstimate) => {
+              onRentCastSuccess={async (newComps, rentEstimate, rentalComps) => {
                 if (!activeDeal || !user) return;
                 const compsWithIds: Comp[] = newComps.map((c) => ({ ...c, id: uid() }));
                 const updatedComps = [...activeDeal.comps, ...compsWithIds];
@@ -1693,46 +1789,36 @@ export default function App() {
                       .eq("user_id", user.id);
                     if (rentError) console.error("Rent update error:", rentError);
                   }
+                  if (rentalComps && rentalComps.length > 0) {
+                    const rentalCompsWithIds = rentalComps.map(r => ({ ...r, id: uid() }));
+                    const { error: rentalError } = await supabase.from("rental_comps").insert(
+                      rentalCompsWithIds.map(r => ({
+                        id: r.id,
+                        deal_id: activeDeal.id,
+                        user_id: user.id,
+                        address: r.address,
+                        monthly_rent: r.monthlyRent,
+                        bed_bath: r.bedBath,
+                        distance: r.distance,
+                      }))
+                    );
+                    if (rentalError) console.error("Rental comps insert error:", rentalError);
+                    setDeals(prev => prev.map(d => d.id === activeDeal.id ? { ...d, rentalComps: rentalCompsWithIds } : d));
+                  }
                 } catch (err) {
                   console.error("RentCast save error:", err);
                 }
               }} />
           )}
 
-          {activeTab === "rental" && (
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 20 : 24 }}>
-              <div>
-                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Rental Inputs</div>
-                <InputField label="Monthly Rent" value={inputs.monthlyRent} onChange={set("monthlyRent")} isMobile={isMobile} />
-                <InputField label="Monthly Expenses" value={inputs.monthlyExpenses} onChange={set("monthlyExpenses")} isMobile={isMobile} />
-                <InputField label="Loan Amount (Refi)" value={inputs.loanAmount} onChange={set("loanAmount")} isMobile={isMobile} />
-                <InputField label="Interest Rate" value={inputs.interestRate} onChange={set("interestRate")} prefix="%" suffix="APR" isMobile={isMobile} />
-                <InputField label="Loan Term" value={inputs.loanTermMonths} onChange={set("loanTermMonths")} prefix="" suffix="mo" isMobile={isMobile} />
-              </div>
-              <div>
-                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Rental Metrics</div>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
-                  <MetricCard label="DSCR" value={metrics.dscr.toFixed(2)} sub={metrics.dscr >= 1.25 ? "✓ Lender Ready" : metrics.dscr >= 1.0 ? "⚠ Borderline" : "✗ Below Threshold"} highlight={metrics.dscr >= 1.25} isMobile={isMobile} />
-                  <MetricCard label="Monthly Payment" value={fmt(metrics.monthlyPayment)} isMobile={isMobile} />
-                  <MetricCard label="Net Monthly Cash Flow" value={fmt(inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment)} highlight isMobile={isMobile} />
-                  <MetricCard label="Annual Cash Flow" value={fmt((inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment) * 12)} isMobile={isMobile} />
-                </div>
-                <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 14, marginTop: 10 }}>
-                  <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-                    DSCR — Debt Service Coverage Ratio
-                  </div>
-                  <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, marginBottom: 12 }}>
-                    DSCR tells lenders whether your rental income covers the loan payment. A score of 1.25 means you earn $1.25 for every $1.00 owed — lenders love this.
-                  </div>
-                  {[{ label: "1.25+ — Most lenders approve", color: "#22c55e" }, { label: "1.10–1.24 — Some lenders, higher rate", color: "#f59e0b" }, { label: "1.00–1.09 — Very limited options", color: "#f97316" }, { label: "Below 1.0 — Negative cash flow", color: "#ef4444" }].map((row) => (
-                    <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: row.color, flexShrink: 0 }} />
-                      <span style={{ fontSize: 12, color: "#94a3b8" }}>{row.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+          {activeTab === "rental" && activeDeal && (
+            <RentalPivotTab
+              inputs={inputs}
+              metrics={metrics}
+              isMobile={isMobile}
+              rentalComps={activeDeal.rentalComps || []}
+              setField={set}
+            />
           )}
 
           {activeTab === "stress" && (
