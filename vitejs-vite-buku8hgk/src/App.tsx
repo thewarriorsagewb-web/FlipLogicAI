@@ -1647,7 +1647,7 @@ export default function App() {
               }}
               onUpdateSubjectSqft={(v) => updateDeal({ subjectSqft: v })}
               onApplyArv={(v) => { updateInputs({ arv: v }); setActiveTab("deal"); }}
-              onRentCastSuccess={(newComps, rentEstimate) => {
+              onRentCastSuccess={async (newComps, rentEstimate) => {
                 if (!activeDeal || !user) return;
                 const compsWithIds: Comp[] = newComps.map((c) => ({ ...c, id: uid() }));
                 const updatedComps = [...activeDeal.comps, ...compsWithIds];
@@ -1661,8 +1661,40 @@ export default function App() {
                   updatedAt: new Date().toISOString(),
                 };
                 setDeals((prev) => prev.map((d) => d.id === activeDeal.id ? updatedDeal : d));
-                if (saveTimer.current) clearTimeout(saveTimer.current);
-                void saveDeal(updatedDeal);
+
+                // Direct Supabase insert — bypass saveDeal entirely
+                try {
+                  if (compsWithIds.length > 0) {
+                    const { error: compsError } = await supabase.from("comps").insert(
+                      compsWithIds.map((c) => ({
+                        id: c.id,
+                        deal_id: activeDeal.id,
+                        user_id: user.id,
+                        address: c.address,
+                        sale_price: c.salePrice,
+                        sqft: c.sqft,
+                        bed_bath: c.bedBath,
+                        days_on_market: c.daysOnMarket,
+                        sold_date: c.soldDate,
+                        strength: c.strength,
+                        notes: c.notes,
+                      }))
+                    );
+                    if (compsError) console.error("Direct comps insert error:", compsError);
+                    else console.log("Direct comps insert success:", compsWithIds.length, "comps");
+                  }
+                  if (rentEstimate > 0) {
+                    const { error: rentError } = await supabase
+                      .from("deals")
+                      .update({ monthly_rent: rentEstimate })
+                      .eq("id", activeDeal.id)
+                      .eq("user_id", user.id);
+                    if (rentError) console.error("Rent update error:", rentError);
+                    else console.log("Rent update success:", rentEstimate);
+                  }
+                } catch (err) {
+                  console.error("RentCast save error:", err);
+                }
               }} />
           )}
 
