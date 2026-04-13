@@ -349,8 +349,6 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
   const [syncingJobId, setSyncingJobId] = useState<string | null>(null);
   const [mediaAnalyzing, setMediaAnalyzing] = useState(false);
 
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("fliplogic_api_key") || "");
-  const [showKey, setShowKey] = useState(false);
   const [photos, setPhotos] = useState<WalkthroughPhoto[]>([]);
   const [findings, setFindings] = useState<AIFinding[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
@@ -398,7 +396,6 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
     setStatus("");
   }, [walkMode]);
 
-  const saveKey = (key: string) => { setApiKey(key); localStorage.setItem("fliplogic_api_key", key); };
   const saveTriggerPhrase = (t: string) => {
     setTriggerPhrase(t);
     localStorage.setItem(WALKTHROUGH_TRIGGER_KEY, t);
@@ -441,31 +438,39 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
   };
 
   const analyze = async () => {
-    if (!apiKey.trim()) { setError("Please enter your Anthropic API key first."); return; }
     if (photos.length === 0) { setError("Please upload at least one property photo."); return; }
-    setAnalyzing(true); setError(""); setFindings([]); setSelectedFindings(new Set());
+    setAnalyzing(true);
+    setError("");
+    setFindings([]);
+    setSelectedFindings(new Set());
     setStatus("Sending photos to Claude AI for analysis...");
     try {
-      const imageContent = photos.map((p) => ({ type: "image", source: { type: "base64", media_type: p.mediaType, data: p.base64 } }));
-      const hazmatContext = buildYearInput < 1978
-        ? `IMPORTANT: This property was built in ${buildYearInput}, before 1978. Assume lead paint is LIKELY present. Flag as critical hazmat.`
-        : `This property was built in ${buildYearInput}.`;
-      const prompt = `You are an expert real estate inspector analyzing property photos for a fix-and-flip investor.\n\n${hazmatContext}\n\nAnalyze all ${photos.length} photo(s). Identify every repair or renovation item. Respond ONLY with a JSON array:\n[\n  {\n    "category": "one of the standard categories",\n    "description": "clear description of work needed",\n    "priority": "critical | important | optional",\n    "estimatedCost": number,\n    "notes": "specific observations",\n    "hazmat": true or false\n  }\n]\n\nReturn ONLY the JSON array.`;
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": apiKey.trim(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-        body: JSON.stringify({ model: "claude-opus-4-6", max_tokens: 2000, messages: [{ role: "user", content: [...imageContent, { type: "text", text: prompt }] }] }),
-      });
-      if (!response.ok) { const err = await response.json(); throw new Error(err.error?.message || `API error: ${response.status}`); }
-      const data = await response.json();
-      const text = data.content[0]?.text || "";
-      const clean = text.replace(/```json|```/g, "").trim();
-      const parsed: AIFinding[] = JSON.parse(clean);
-      setFindings(parsed);
-      setSelectedFindings(new Set(parsed.map((_, i) => i)));
-      setStatus(`Analysis complete — ${parsed.length} findings identified.`);
-    } catch (err: any) {
-      setError(err.message || "Analysis failed.");
+      const b64 = photos.map((p) => p.base64);
+      const payload = {
+        mode: "photos",
+        propertyAddress: address,
+        buildYear: buildYearInput,
+        videoFrames: b64,
+        framesBase64: b64,
+        flagTimestamps: [] as number[],
+        transcript: "",
+      };
+      const { data, error: fnErr } = await supabase.functions.invoke("analyze-walkthrough", { body: payload });
+      if (fnErr) {
+        const detail = (fnErr as unknown as { context?: { json?: () => Promise<unknown> } }).context?.json
+          ? JSON.stringify(await (fnErr as unknown as { context: { json: () => Promise<unknown> } }).context.json())
+          : fnErr.message || String(fnErr);
+        throw new Error(detail);
+      }
+      const findings = (data as { findings?: AIFinding[]; error?: string })?.findings;
+      const serverError = (data as { error?: string })?.error;
+      if (serverError) throw new Error(serverError);
+      if (!findings || !Array.isArray(findings)) throw new Error("Invalid response: " + JSON.stringify(data));
+      setFindings(findings);
+      setSelectedFindings(new Set(findings.map((_, i) => i)));
+      setStatus(`Analysis complete — ${findings.length} findings identified.`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Analysis failed.");
     } finally {
       setAnalyzing(false);
     }
@@ -495,7 +500,7 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
 
   const howItWorksByMode: Record<WalkthroughCaptureMode, { icon: string; text: string }[]> = {
     photos: [
-      { icon: "1️⃣", text: "Enter your Anthropic API key above — get yours free at console.anthropic.com" },
+      { icon: "1️⃣", text: "Photos are analyzed securely via FlipLogic AI — no API key required" },
       { icon: "2️⃣", text: "Upload up to 8 photos of the property — drag and drop or tap to select" },
       { icon: "3️⃣", text: "Set the property build year above — pre-1978 homes automatically trigger lead paint warnings" },
       { icon: "4️⃣", text: "Tap Analyze Photos — AI identifies every repair item visible in your photos and estimates costs" },
@@ -586,23 +591,6 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
         </div>
       )}
 
-      {walkMode === "photos" && (
-        <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, marginBottom: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>Anthropic API Key</div>
-            {apiKey && <div style={{ fontSize: 11, color: "#22c55e" }}>✓ Key saved</div>}
-          </div>
-          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 8, width: "100%" }}>
-            <div style={{ flex: 1, display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden", minHeight: isMobile ? 44 : undefined, width: "100%" }}>
-              <input type={showKey ? "text" : "password"} value={apiKey} onChange={(e) => saveKey(e.target.value)} placeholder="sk-ant-api03-..."
-                style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: isMobile ? "12px 14px" : "8px 12px", fontSize: isMobile ? 15 : 13, fontFamily: "monospace" }} />
-              <button type="button" onClick={() => setShowKey(!showKey)} style={{ padding: isMobile ? "12px 16px" : "8px 12px", minHeight: isMobile ? 44 : undefined, background: "transparent", border: "none", color: "#475569", cursor: "pointer", fontSize: isMobile ? 13 : 11 }}>{showKey ? "Hide" : "Show"}</button>
-            </div>
-          </div>
-          <div style={{ fontSize: isMobile ? 12 : 11, color: "#334155", marginTop: 6 }}>Your key is stored only in your browser. Get yours at console.anthropic.com</div>
-        </div>
-      )}
-
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 340px", gap: isMobile ? 20 : 24 }}>
         <div>
           <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: 16, marginBottom: 16, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: isMobile ? 14 : 14 }}>
@@ -638,9 +626,9 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
                 </div>
               )}
 
-              <button type="button" onClick={analyze} disabled={analyzing || photos.length === 0 || !apiKey}
-                style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 15 : 14, fontWeight: 700, cursor: analyzing || photos.length === 0 || !apiKey ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
-                  background: analyzing || photos.length === 0 || !apiKey ? "#1e293b" : "linear-gradient(135deg, #7c3aed, #6d28d9)", opacity: analyzing || photos.length === 0 || !apiKey ? 0.5 : 1 }}>
+              <button type="button" onClick={analyze} disabled={analyzing || photos.length === 0}
+                style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 15 : 14, fontWeight: 700, cursor: analyzing || photos.length === 0 ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
+                  background: analyzing || photos.length === 0 ? "#1e293b" : "linear-gradient(135deg, #7c3aed, #6d28d9)", opacity: analyzing || photos.length === 0 ? 0.5 : 1 }}>
                 {analyzing ? "🔍 Analyzing..." : `🤖 Analyze ${photos.length > 0 ? photos.length + " Photo" + (photos.length > 1 ? "s" : "") : "Photos"} with AI`}
               </button>
             </>
