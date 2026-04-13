@@ -1364,6 +1364,7 @@ export default function App() {
   // ─── Auto-save with debounce ──────────────────────────────────────────────
   const saveDeal = async (deal: Deal) => {
     if (!user) return;
+    console.log("saveDeal called for deal:", deal.id, "comps:", deal.comps.length, "scope:", deal.scopeItems.length);
     setSyncing(true);
     try {
       await supabase.from("deals").upsert({
@@ -1388,7 +1389,7 @@ export default function App() {
 
       // Upsert comps — never delete, only add/update
       if (deal.comps.length > 0) {
-        await supabase.from("comps").upsert(
+        const { error: compsError } = await supabase.from("comps").upsert(
           deal.comps.map(c => ({
             id: c.id,
             deal_id: deal.id,
@@ -1404,6 +1405,7 @@ export default function App() {
           })),
           { onConflict: "id" }
         );
+        if (compsError) console.error("Comps upsert error:", compsError);
       }
 
       // Upsert scope items — never delete, only add/update
