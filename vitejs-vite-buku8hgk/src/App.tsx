@@ -1394,16 +1394,43 @@ export default function App() {
         lender_info: deal.lenderInfo,
       });
 
-      // Delete and re-insert comps
-      await supabase.from("comps").delete().eq("deal_id", deal.id);
+      // Upsert comps — never delete, only add/update
       if (deal.comps.length > 0) {
-        await supabase.from("comps").insert(deal.comps.map(c => ({ id: c.id, deal_id: deal.id, user_id: user.id, address: c.address, sale_price: c.salePrice, sqft: c.sqft, bed_bath: c.bedBath, days_on_market: c.daysOnMarket, sold_date: c.soldDate, strength: c.strength, notes: c.notes })));
+        await supabase.from("comps").upsert(
+          deal.comps.map(c => ({
+            id: c.id,
+            deal_id: deal.id,
+            user_id: user.id,
+            address: c.address,
+            sale_price: c.salePrice,
+            sqft: c.sqft,
+            bed_bath: c.bedBath,
+            days_on_market: c.daysOnMarket,
+            sold_date: c.soldDate,
+            strength: c.strength,
+            notes: c.notes,
+          })),
+          { onConflict: "id" }
+        );
       }
 
-      // Delete and re-insert scope items
-      await supabase.from("scope_items").delete().eq("deal_id", deal.id);
+      // Upsert scope items — never delete, only add/update
       if (deal.scopeItems.length > 0) {
-        await supabase.from("scope_items").insert(deal.scopeItems.map(s => ({ id: s.id, deal_id: deal.id, user_id: user.id, category: s.category, description: s.description, quantity: s.quantity, unit: s.unit, my_estimate: s.myEstimate, notes: s.notes, priority: s.priority })));
+        await supabase.from("scope_items").upsert(
+          deal.scopeItems.map(s => ({
+            id: s.id,
+            deal_id: deal.id,
+            user_id: user.id,
+            category: s.category,
+            description: s.description,
+            quantity: s.quantity,
+            unit: s.unit,
+            my_estimate: s.myEstimate,
+            notes: s.notes,
+            priority: s.priority,
+          })),
+          { onConflict: "id" }
+        );
       }
     } catch (err) {
       console.error("Save error:", err);
@@ -1620,7 +1647,10 @@ export default function App() {
               propertyAddress={inputs.propertyAddress}
               onAddComp={() => updateDeal({ comps: [...activeDeal.comps, { id: uid(), address: "", salePrice: 0, sqft: 0, bedBath: "", daysOnMarket: 0, soldDate: "", strength: "average", notes: "" }] })}
               onUpdateComp={(id, u) => updateDeal({ comps: activeDeal.comps.map((c) => c.id === id ? { ...c, ...u } : c) })}
-              onDeleteComp={(id) => updateDeal({ comps: activeDeal.comps.filter((c) => c.id !== id) })}
+              onDeleteComp={async (id) => {
+                await supabase.from("comps").delete().eq("id", id);
+                updateDeal({ comps: activeDeal.comps.filter((c) => c.id !== id) });
+              }}
               onUpdateSubjectSqft={(v) => updateDeal({ subjectSqft: v })}
               onApplyArv={(v) => { updateInputs({ arv: v }); setActiveTab("deal"); }}
               onAddMultipleComps={(newComps) => updateDeal({ comps: [...activeDeal.comps, ...newComps.map((c) => ({ ...c, id: uid() }))] })}
@@ -1720,7 +1750,10 @@ export default function App() {
               scopeItems={activeDeal.scopeItems} address={inputs.propertyAddress} isMobile={isMobile}
               onAdd={() => updateDeal({ scopeItems: [...activeDeal.scopeItems, { id: uid(), category: "Other", description: "", quantity: 1, unit: "lot", myEstimate: 0, notes: "", priority: "important" }] })}
               onUpdate={(id, u) => updateDeal({ scopeItems: activeDeal.scopeItems.map((s) => s.id === id ? { ...s, ...u } : s) })}
-              onDelete={(id) => updateDeal({ scopeItems: activeDeal.scopeItems.filter((s) => s.id !== id) })}
+              onDelete={async (id) => {
+                await supabase.from("scope_items").delete().eq("id", id);
+                updateDeal({ scopeItems: activeDeal.scopeItems.filter((s) => s.id !== id) });
+              }}
             />
           )}
 
