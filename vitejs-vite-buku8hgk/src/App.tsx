@@ -919,7 +919,7 @@ function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete, isMobi
                         </button>
                       ))}
                     </div>
-                    <button type="button" onClick={() => onDelete(item.id)} style={{ background: "transparent", border: "none", color: "#334155", cursor: "pointer", fontSize: 18, minWidth: 44, minHeight: 44 }} aria-label="Delete item">×</button>
+                    <button type="button" onClick={() => onDelete(item.id)} style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, color: "#f87171", cursor: "pointer", fontSize: 13, fontWeight: 700, padding: "8px 14px", minWidth: 44, minHeight: 44, fontFamily: "'Syne', sans-serif" }} aria-label="Remove scope item">🗑 Remove</button>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "180px 1fr", gap: 8, marginBottom: 8 }}>
                     <div>
