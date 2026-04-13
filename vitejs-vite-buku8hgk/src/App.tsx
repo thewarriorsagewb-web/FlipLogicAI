@@ -967,6 +967,17 @@ function RentalPivotTab({ inputs, metrics, isMobile = false, rentalComps, setFie
             </div>
           ))}
         </div>
+        {rentalComps.length === 0 && (
+          <div style={{ marginTop: 16, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16 }}>
+            <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+              Rental Comps
+            </div>
+            <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.6 }}>
+              No rental comps yet. Go to the Comps tab and tap Auto-Pull Comps from RentCast to automatically pull nearby rental listings for this property.
+            </div>
+          </div>
+        )}
+
         {rentalComps.length > 0 && (
           <div style={{ marginTop: 16, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16 }}>
             <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
