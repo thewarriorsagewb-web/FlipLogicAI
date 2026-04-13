@@ -404,3 +404,6 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 
 [functions.analyze-walkthrough]
 verify_jwt = false
+
+[functions.rentcast-comps]
+verify_jwt = false
