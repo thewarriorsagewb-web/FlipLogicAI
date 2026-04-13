@@ -50,7 +50,7 @@ type RecMode = "audio" | "video" | "audiovideo";
 type RecPhase = "idle" | "recording" | "paused" | "stopped";
 
 function uid() {
-  return Math.random().toString(36).slice(2, 10);
+  return crypto.randomUUID();
 }
 
 export function WalkthroughMediaRecorder({
