@@ -429,6 +429,7 @@ export function WalkthroughMediaRecorder({
       if (mode === "audio") {
         if (!blob) throw new Error("No recording to analyze");
         const audioBase64 = await blobToBase64(blob);
+        console.log("TRANSCRIPT DEBUG:", transcriptPieces.length, "pieces:", transcriptPieces.join(" ").trim().slice(0, 200));
         await runAnalyze({
           mode: "audio",
           propertyAddress: address,
@@ -443,6 +444,7 @@ export function WalkthroughMediaRecorder({
       if (mode === "video") {
         if (!blob) throw new Error("No recording");
         const videoBase64 = await blobToBase64(blob);
+        console.log("TRANSCRIPT DEBUG:", transcriptPieces.length, "pieces:", transcriptPieces.join(" ").trim().slice(0, 200));
         await runAnalyze({
           mode: "video",
           propertyAddress: address,
@@ -457,6 +459,7 @@ export function WalkthroughMediaRecorder({
       }
       if (!blob) throw new Error("No audio track");
       const audioBase64 = await blobToBase64(blob);
+      console.log("TRANSCRIPT DEBUG:", transcriptPieces.length, "pieces:", transcriptPieces.join(" ").trim().slice(0, 200));
       await runAnalyze({
         mode: "audiovideo",
         propertyAddress: address,
