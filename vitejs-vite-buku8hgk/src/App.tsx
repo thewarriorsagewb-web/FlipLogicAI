@@ -1318,8 +1318,8 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmai
 // ─── Onboarding Modal ─────────────────────────────────────────────────────────
 function OnboardingModal({ onClose, onNewDeal, isMobile = false }: { onClose: () => void; onNewDeal: () => void; isMobile?: boolean }) {
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 16 : 24 }}>
-      <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12, padding: isMobile ? 24 : 40, maxWidth: 480, width: "100%", boxSizing: "border-box" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? "16px" : "24px", overflowY: "auto" }}>
+      <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12, padding: isMobile ? "24px 20px" : 40, maxWidth: 480, width: "100%", boxSizing: "border-box", maxHeight: isMobile ? "90vh" : "85vh", overflowY: "auto" }}>
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 800, color: "#f1f5f9", marginBottom: 6 }}>
             FLIP<span style={{ color: "#3b82f6" }}>LOGIC</span> AI
