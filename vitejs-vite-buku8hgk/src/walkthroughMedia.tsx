@@ -62,6 +62,8 @@ export function WalkthroughMediaRecorder({
   triggerPhrase,
   onFindings,
   onAnalyzing,
+  dealId,
+  userId,
 }: {
   mode: RecMode;
   address: string;
@@ -71,7 +73,10 @@ export function WalkthroughMediaRecorder({
   triggerPhrase: string;
   onFindings: (f: AIFinding[]) => void;
   onAnalyzing: (b: boolean) => void;
+  dealId: string;
+  userId: string;
 }) {
+  const [analyzing, setAnalyzing] = useState(false);
   const [phase, setPhase] = useState<RecPhase>("idle");
   const [elapsedSec, setElapsedSec] = useState(0);
   const [flags, setFlags] = useState<WalkthroughFlag[]>([]);
@@ -398,6 +403,7 @@ export function WalkthroughMediaRecorder({
 
   const runAnalyze = async (body: Record<string, unknown>) => {
     setAnalyzeError("");
+    setAnalyzing(true);
     onAnalyzing(true);
     try {
       const { data, error } = await supabase.functions.invoke("analyze-walkthrough", { body });
@@ -412,9 +418,22 @@ export function WalkthroughMediaRecorder({
       if (serverError) throw new Error(serverError);
       if (!findings || !Array.isArray(findings)) throw new Error("Invalid response: " + JSON.stringify(data));
       onFindings(findings);
+      try {
+        await supabase.from("walkthrough_findings").insert({
+          deal_id: dealId,
+          user_id: userId,
+          mode: mode,
+          findings: findings,
+          transcript: transcriptPieces.join(" ").trim(),
+          created_at: new Date().toISOString(),
+        });
+      } catch (saveErr) {
+        console.error("Could not save findings:", saveErr);
+      }
     } catch (e: unknown) {
       setAnalyzeError(e instanceof Error ? e.message : "Analysis failed");
     } finally {
+      setAnalyzing(false);
       onAnalyzing(false);
     }
   };
@@ -541,7 +560,9 @@ export function WalkthroughMediaRecorder({
 
   return (
     <div>
-      <style>{`@keyframes wtPulse { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.92)} }`}</style>
+      <style>{`@keyframes wtPulse { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.92)} }
+@keyframes wtAnalyzeHintPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+.wt-analyze-hint { animation: wtAnalyzeHintPulse 1.8s ease-in-out infinite; }`}</style>
       {!online && (
         <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 8, padding: 12, marginBottom: 12, color: "#fbbf24", fontSize: 13 }}>
           Offline — new recordings will be stored locally until you reconnect.
@@ -627,14 +648,21 @@ export function WalkthroughMediaRecorder({
       )}
 
       {phase === "stopped" && (stoppedBlobRef.current || mode === "audiovideo") && (
-        <button
-          type="button"
-          disabled={!navigator.onLine}
-          onClick={() => void analyzeFromStopped()}
-          style={{ ...btn, width: "100%", marginBottom: 12, background: navigator.onLine ? "linear-gradient(135deg, #7c3aed, #6d28d9)" : "#1e293b", color: "#fff", opacity: navigator.onLine ? 1 : 0.5 }}
-        >
-          Analyze walkthrough
-        </button>
+        <>
+          <button
+            type="button"
+            disabled={!navigator.onLine || analyzing}
+            onClick={() => void analyzeFromStopped()}
+            style={{ ...btn, width: "100%", marginBottom: analyzing ? 0 : 12, background: navigator.onLine && !analyzing ? "linear-gradient(135deg, #7c3aed, #6d28d9)" : "#1e293b", color: "#fff", opacity: navigator.onLine && !analyzing ? 1 : 0.5, cursor: analyzing ? "wait" : "pointer" }}
+          >
+            {analyzing ? "🔍 Analyzing... this may take 20-30 seconds" : "Analyze walkthrough"}
+          </button>
+          {analyzing && (
+            <div className="wt-analyze-hint" style={{ textAlign: "center", marginTop: 10, marginBottom: 12, fontSize: 13, color: "#94a3b8" }} role="status">
+              Transcribing audio → Generating scope items...
+            </div>
+          )}
+        </>
       )}
 
       {mediaError && <div style={{ color: "#f87171", marginBottom: 10, fontSize: 13 }}>{mediaError}</div>}

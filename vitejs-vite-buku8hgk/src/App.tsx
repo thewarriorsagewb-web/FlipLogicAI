@@ -339,8 +339,9 @@ function ScenarioRow({ scenario, inputs, isMobile = false }: { scenario: Scenari
 }
 
 // ─── AI WALKTHROUGH TAB ───────────────────────────────────────────────────────
-function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false }: {
+function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, dealId, userId }: {
   address: string; buildYear: number; onAddToScope: (items: ScopeItem[]) => void; isMobile?: boolean;
+  dealId: string; userId: string;
 }) {
   const [walkMode, setWalkMode] = useState<WalkthroughCaptureMode>("photos");
   const [triggerPhrase, setTriggerPhrase] = useState(() => localStorage.getItem(WALKTHROUGH_TRIGGER_KEY) || "flag this");
@@ -363,6 +364,32 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false }
     const iv = window.setInterval(() => setPendingJobs(loadPendingJobs()), 2000);
     return () => window.clearInterval(iv);
   }, []);
+
+  useEffect(() => {
+    if (!dealId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from("walkthrough_findings")
+        .select("findings, transcript")
+        .eq("deal_id", dealId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+      if (cancelled) return;
+      if (error) {
+        const code = (error as { code?: string }).code;
+        if (code === "PGRST116") return;
+        return;
+      }
+      const loaded = data?.findings;
+      if (Array.isArray(loaded) && loaded.length > 0) {
+        setFindings(loaded as AIFinding[]);
+        setSelectedFindings(new Set(loaded.map((_: unknown, i: number) => i)));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [dealId]);
 
   useEffect(() => {
     setFindings([]);
@@ -637,6 +664,8 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false }
                 isMobile={isMobile}
                 supabase={supabase}
                 triggerPhrase={triggerPhrase}
+                dealId={dealId}
+                userId={userId}
                 onFindings={(f) => {
                   setFindings(f);
                   setSelectedFindings(new Set(f.map((_, i) => i)));
@@ -1511,7 +1540,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === "ai" && <AIWalkthroughTab address={inputs.propertyAddress} buildYear={1970} onAddToScope={handleAddAIToScope} isMobile={isMobile} />}
+          {activeTab === "ai" && <AIWalkthroughTab address={inputs.propertyAddress} buildYear={1970} onAddToScope={handleAddAIToScope} isMobile={isMobile} dealId={activeDeal.id} userId={user.id} />}
 
           {activeTab === "comps" && (
             <CompsTab comps={activeDeal.comps} subjectSqft={activeDeal.subjectSqft} enteredArv={inputs.arv} isMobile={isMobile}

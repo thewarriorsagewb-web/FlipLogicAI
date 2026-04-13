@@ -1,3 +1,5 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -14,6 +16,40 @@ interface Finding {
   hazmat: boolean;
 }
 
+async function transcribeAudio(audioBase64: string, mimeType: string, deepgramKey: string): Promise<string> {
+  console.log("Transcribing audio with Deepgram...");
+  const audioBuffer = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
+  const response = await fetch(
+    "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&punctuate=true",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Token ${deepgramKey}`,
+        "Content-Type": mimeType || "audio/webm",
+      },
+      body: audioBuffer,
+    }
+  );
+  if (!response.ok) {
+    const err = await response.text();
+    console.error("Deepgram error:", err);
+    return "";
+  }
+  const data = await response.json() as {
+    results?: {
+      channels?: {
+        alternatives?: {
+          transcript?: string;
+        }[];
+      }[];
+    };
+  };
+  const transcript = data?.results?.channels?.[0]?.alternatives?.[0]?.transcript || "";
+  console.log("Deepgram transcript length:", transcript.length);
+  console.log("Transcript preview:", transcript.slice(0, 200));
+  return transcript;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -26,15 +62,30 @@ Deno.serve(async (req: Request) => {
     const address = String(body.propertyAddress ?? "");
     const buildYear = Number(body.buildYear ?? 0);
     const flags = Array.isArray(body.flagTimestamps) ? body.flagTimestamps as number[] : [];
-    const transcript = String(body.transcript ?? "").trim();
+    let transcript = String(body.transcript ?? "").trim();
     const framesBase64 = Array.isArray(body.framesBase64) ? body.framesBase64 as string[] : [];
     const videoBursts = Array.isArray(body.videoBursts) ? body.videoBursts as { base64: string; atSec: number; mimeType: string }[] : [];
+    const audioBase64 = String(body.audioBase64 ?? "");
+    const mimeType = String(body.mimeType ?? "audio/webm");
 
-    console.log(`analyze-walkthrough: mode=${mode}, address=${address}, frames=${framesBase64.length}, bursts=${videoBursts.length}, flags=${flags.length}, transcript_len=${transcript.length}`);
+    console.log(`analyze-walkthrough: mode=${mode}, address=${address}, frames=${framesBase64.length}, bursts=${videoBursts.length}, flags=${flags.length}, transcript_len=${transcript.length}, has_audio=${audioBase64.length > 0}`);
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) {
       throw new Error("ANTHROPIC_API_KEY not configured in Edge Function secrets");
+    }
+
+    const DEEPGRAM_API_KEY = Deno.env.get("DEEPGRAM_API_KEY");
+
+    // If we have audio and Deepgram key, transcribe it
+    if (audioBase64 && DEEPGRAM_API_KEY) {
+      const deepgramTranscript = await transcribeAudio(audioBase64, mimeType, DEEPGRAM_API_KEY);
+      if (deepgramTranscript) {
+        transcript = deepgramTranscript;
+        console.log("Using Deepgram transcript");
+      }
+    } else if (!DEEPGRAM_API_KEY) {
+      console.log("No Deepgram key — using browser transcript only");
     }
 
     // Format flags as readable text
@@ -70,6 +121,8 @@ ${videoBursts.length > 0 ? `${videoBursts.length} video burst frame(s) are also 
 
 Your job: Identify every repair, defect, safety issue, or renovation item based on the transcript and any images provided. Use the property location to inform your cost estimates — regional labor and material costs vary significantly across the US.
 
+If no transcript is provided and no images are attached, return an empty array.
+
 Return ONLY a valid JSON array. No markdown, no explanation, no code blocks. Just the raw JSON array:
 [
   {
@@ -84,13 +137,9 @@ Return ONLY a valid JSON array. No markdown, no explanation, no code blocks. Jus
 
     // Collect all image frames
     const allFrames: string[] = [];
-
-    // Add video frames from continuous recording
     for (const f of framesBase64) {
       allFrames.push(f);
     }
-
-    // Add frames from video bursts
     for (const burst of videoBursts) {
       if (burst.base64) allFrames.push(burst.base64);
     }
@@ -106,7 +155,7 @@ Return ONLY a valid JSON array. No markdown, no explanation, no code blocks. Jus
       }
     }
 
-    // Build Claude content array — text prompt first, then images
+    // Build Claude content array
     const content: unknown[] = [
       { type: "text", text: promptText }
     ];
@@ -122,9 +171,8 @@ Return ONLY a valid JSON array. No markdown, no explanation, no code blocks. Jus
       });
     }
 
-    console.log(`Sending to Claude: ${framesToSend.length} frames`);
+    console.log(`Sending to Claude: ${framesToSend.length} frames, transcript_len=${transcript.length}`);
 
-    // Call Claude
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -154,7 +202,6 @@ Return ONLY a valid JSON array. No markdown, no explanation, no code blocks. Jus
     const rawText = apiData.content?.[0]?.text ?? "";
     console.log("Claude response length:", rawText.length);
 
-    // Strip markdown fences if present
     const cleaned = rawText
       .replace(/```json\s*/gi, "")
       .replace(/```\s*/gi, "")
