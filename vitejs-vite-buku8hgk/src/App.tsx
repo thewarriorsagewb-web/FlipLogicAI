@@ -799,6 +799,10 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
       setPullError("Enter a property address in the Deal Analysis tab first");
       return;
     }
+    if (comps.length >= 3) {
+      setPullSuccess("Comps already pulled for this deal. Remove existing comps first to pull fresh data.");
+      return;
+    }
     setPullingComps(true);
     setPullError("");
     setPullSuccess("");
@@ -844,10 +848,10 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
         <button
           type="button"
           onClick={() => void pullCompsFromRentCast()}
-          disabled={pullingComps || !propertyAddress.trim()}
+          disabled={pullingComps || !propertyAddress.trim() || comps.length >= 3}
           style={{
             width: isMobile ? "100%" : "auto",
-            background: pullingComps || !propertyAddress.trim() ? "#1e293b" : "#1d4ed8",
+            background: pullingComps || !propertyAddress.trim() || comps.length >= 3 ? "#1e293b" : "#1d4ed8",
             border: "none",
             borderRadius: 8,
             color: "#fff",
@@ -855,12 +859,12 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
             minHeight: isMobile ? 48 : 44,
             fontSize: isMobile ? 14 : 13,
             fontWeight: 700,
-            cursor: pullingComps || !propertyAddress.trim() ? "not-allowed" : "pointer",
+            cursor: pullingComps || !propertyAddress.trim() || comps.length >= 3 ? "not-allowed" : "pointer",
             fontFamily: "'Syne', sans-serif",
-            opacity: pullingComps || !propertyAddress.trim() ? 0.6 : 1,
+            opacity: pullingComps || !propertyAddress.trim() || comps.length >= 3 ? 0.6 : 1,
           }}
         >
-          {pullingComps ? "Pulling comps..." : "🔄 Auto-Pull Comps from RentCast"}
+          {pullingComps ? "Pulling comps..." : comps.length >= 3 ? "✓ Comps Already Pulled" : "🔄 Auto-Pull Comps from RentCast"}
         </button>
         {pullError && <div style={{ color: "#f87171", fontSize: 13, marginTop: 10 }}>{pullError}</div>}
         {pullSuccess && <div style={{ color: "#22c55e", fontSize: 13, marginTop: 10 }}>{pullSuccess}</div>}
