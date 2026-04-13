@@ -151,7 +151,7 @@ function calculateCompARV(comps: Comp[], subjectSqft: number) {
 
 const fmt = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 const fmtPct = (n: number) => `${n.toFixed(1)}%`;
-const uid = () => Math.random().toString(36).slice(2, 10);
+const uid = () => crypto.randomUUID();
 
 const SCORE_STYLES: Record<DealMetrics["dealScore"], { bg: string; text: string; border: string }> = {
   HOT: { bg: "#0d3d1f", text: "#22c55e", border: "#16a34a" },
