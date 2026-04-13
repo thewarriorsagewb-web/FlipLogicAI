@@ -771,7 +771,7 @@ function CompCard({ comp, onUpdate, onDelete, isMobile = false }: { comp: Comp; 
             </button>
           ))}
         </div>
-        <button type="button" onClick={onDelete} style={{ background: "transparent", border: "none", color: "#334155", cursor: "pointer", fontSize: 20, minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center" }} aria-label="Remove comp">×</button>
+        <button type="button" onClick={onDelete} style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, color: "#f87171", cursor: "pointer", fontSize: 13, fontWeight: 700, padding: "8px 14px", minWidth: 44, minHeight: 44, fontFamily: "'Syne', sans-serif" }} aria-label="Remove comp">🗑 Remove</button>
       </div>
       <input type="text" value={comp.address} placeholder="Address..." onChange={(e) => onUpdate({ address: e.target.value })} style={{ ...fs, marginBottom: 8, color: "#94a3b8" }} />
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
