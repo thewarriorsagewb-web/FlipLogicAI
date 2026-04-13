@@ -1295,7 +1295,7 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmai
                 <div style={{ fontSize: 10, fontWeight: 700, padding: "2px 5px", borderRadius: 3, background: score.bg, color: score.text, border: `1px solid ${score.border}`, flexShrink: 0 }}>{m.dealScore}</div>
               </div>
               {deal.inputs.propertyAddress === "123 Main St, Atlanta, GA 30301" && (
-                <div style={{ fontSize: 9, color: "#475569", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 3, padding: "2px 6px", display: "inline-block", marginTop: 2, letterSpacing: "0.08em" }}>DEMO DEAL</div>
+                <div style={{ fontSize: 9, color: "#f59e0b", background: "#2d2000", border: "1px solid #d97706", borderRadius: 3, padding: "2px 6px", display: "inline-block", marginTop: 2, letterSpacing: "0.08em", fontWeight: 700 }}>DEMO DEAL</div>
               )}
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <div style={{ fontSize: 12, color: "#22c55e", fontFamily: "monospace" }}>{m.netProfit !== 0 ? fmt(m.netProfit) : "—"}</div>
@@ -1681,8 +1681,8 @@ export default function App() {
             style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "#94a3b8", fontSize: isMobile ? 15 : 13, fontFamily: "monospace", boxSizing: "border-box", minHeight: isMobile ? 44 : undefined, padding: isMobile ? "4px 0" : 0 }} />
         </div>
         {inputs.propertyAddress === "123 Main St, Atlanta, GA 30301" && (
-          <div style={{ padding: isMobile ? "6px 14px" : "6px 24px", background: "#0d1829", borderBottom: "1px solid #1e293b", fontSize: isMobile ? 11 : 10, color: "#475569", letterSpacing: "0.08em", flexShrink: 0 }}>
-            📋 This is a demo deal with sample data. Create a new deal to analyze a real property.
+          <div style={{ padding: isMobile ? "8px 14px" : "8px 24px", background: "#2d2000", borderBottom: "1px solid #d97706", fontSize: isMobile ? 12 : 11, color: "#f59e0b", letterSpacing: "0.08em", flexShrink: 0, fontWeight: 600 }}>
+            📋 This is a demo deal with sample data. Create a new deal in the sidebar to analyze a real property.
           </div>
         )}
 
