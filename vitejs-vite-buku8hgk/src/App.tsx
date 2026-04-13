@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type CSSProperties } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { AIFinding, WalkthroughCaptureMode, PendingWalkthroughJob } from "./walkthroughTypes";
 import { WalkthroughMediaRecorder, WALKTHROUGH_TRIGGER_KEY, loadPendingJobs, savePendingJobs } from "./walkthroughMedia";
 // ─── Supabase Client ──────────────────────────────────────────────────────────
@@ -780,16 +780,97 @@ function CompCard({ comp, onUpdate, onDelete, isMobile = false }: { comp: Comp; 
 }
 
 // ─── Comps Tab ────────────────────────────────────────────────────────────────
-function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onDeleteComp, onUpdateSubjectSqft, onApplyArv, isMobile = false }: {
+function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onDeleteComp, onUpdateSubjectSqft, onApplyArv, onAddMultipleComps, onApplyRent, supabase, dealId: _dealId, propertyAddress, isMobile = false }: {
   comps: Comp[]; subjectSqft: number; enteredArv: number;
   onAddComp: () => void; onUpdateComp: (id: string, u: Partial<Comp>) => void;
-  onDeleteComp: (id: string) => void; onUpdateSubjectSqft: (v: number) => void; onApplyArv: (v: number) => void; isMobile?: boolean;
+  onDeleteComp: (id: string) => void; onUpdateSubjectSqft: (v: number) => void; onApplyArv: (v: number) => void;
+  onAddMultipleComps: (newComps: Omit<Comp, "id">[]) => void;
+  onApplyRent: (rent: number) => void;
+  supabase: SupabaseClient;
+  dealId: string;
+  propertyAddress: string;
+  isMobile?: boolean;
 }) {
+  const [pullingComps, setPullingComps] = useState(false);
+  const [pullError, setPullError] = useState("");
+  const [pullSuccess, setPullSuccess] = useState("");
+
+  const pullCompsFromRentCast = async () => {
+    if (!propertyAddress.trim()) {
+      setPullError("Enter a property address in the Deal Analysis tab first");
+      return;
+    }
+    setPullingComps(true);
+    setPullError("");
+    setPullSuccess("");
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke("rentcast-comps", {
+        body: { address: propertyAddress.trim() },
+      });
+      if (fnErr) {
+        const detail = (fnErr as unknown as { context?: { json?: () => Promise<unknown> } }).context?.json
+          ? JSON.stringify(await (fnErr as unknown as { context: { json: () => Promise<unknown> } }).context.json())
+          : fnErr.message || String(fnErr);
+        throw new Error(detail);
+      }
+      const payload = data as {
+        success?: boolean;
+        error?: string;
+        saleComps?: Omit<Comp, "id">[];
+        rentEstimate?: number;
+      };
+      if (payload.success === false && payload.error) throw new Error(payload.error);
+      const saleList = payload.saleComps || [];
+      const rentEst = typeof payload.rentEstimate === "number" ? payload.rentEstimate : 0;
+      const room = Math.max(0, 6 - comps.length);
+      const toAdd = saleList.slice(0, room);
+      if (toAdd.length > 0) {
+        onAddMultipleComps(toAdd);
+      }
+      if (rentEst > 0) {
+        onApplyRent(Math.round(rentEst));
+      }
+      setPullSuccess(`Pulled ${toAdd.length} sale comps and rent estimate of ${fmt(rentEst)} from RentCast`);
+    } catch (e: unknown) {
+      setPullError(e instanceof Error ? e.message : "Failed to pull comps");
+    } finally {
+      setPullingComps(false);
+    }
+  };
+
   const { weightedArv, avgPpsf, strongAvg, allAvg } = calculateCompARV(comps, subjectSqft);
   const validComps = comps.filter((c) => c.salePrice > 0);
   const arvDiff = enteredArv > 0 && weightedArv > 0 ? ((enteredArv - weightedArv) / weightedArv) * 100 : null;
   return (
     <div>
+      <div style={{ marginBottom: 16, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: isMobile ? 16 : 14 }}>
+        {!propertyAddress.trim() && (
+          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>Enter a property address in the Deal Analysis tab first</div>
+        )}
+        <button
+          type="button"
+          onClick={() => void pullCompsFromRentCast()}
+          disabled={pullingComps || !propertyAddress.trim()}
+          style={{
+            width: isMobile ? "100%" : "auto",
+            background: pullingComps || !propertyAddress.trim() ? "#1e293b" : "#1d4ed8",
+            border: "none",
+            borderRadius: 8,
+            color: "#fff",
+            padding: isMobile ? "14px 16px" : "10px 18px",
+            minHeight: isMobile ? 48 : 44,
+            fontSize: isMobile ? 14 : 13,
+            fontWeight: 700,
+            cursor: pullingComps || !propertyAddress.trim() ? "not-allowed" : "pointer",
+            fontFamily: "'Syne', sans-serif",
+            opacity: pullingComps || !propertyAddress.trim() ? 0.6 : 1,
+          }}
+        >
+          {pullingComps ? "Pulling comps..." : "🔄 Auto-Pull Comps from RentCast"}
+        </button>
+        {pullError && <div style={{ color: "#f87171", fontSize: 13, marginTop: 10 }}>{pullError}</div>}
+        {pullSuccess && <div style={{ color: "#22c55e", fontSize: 13, marginTop: 10 }}>{pullSuccess}</div>}
+      </div>
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 14 : 16, marginBottom: 20, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: isMobile ? 16 : 14 }}>
         <div style={{ flex: 1, width: isMobile ? "100%" : undefined }}>
           <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Subject Sq Ft</div>
@@ -1532,11 +1613,16 @@ export default function App() {
 
           {activeTab === "comps" && (
             <CompsTab comps={activeDeal.comps} subjectSqft={activeDeal.subjectSqft} enteredArv={inputs.arv} isMobile={isMobile}
+              supabase={supabase}
+              dealId={activeDeal.id}
+              propertyAddress={inputs.propertyAddress}
               onAddComp={() => updateDeal({ comps: [...activeDeal.comps, { id: uid(), address: "", salePrice: 0, sqft: 0, bedBath: "", daysOnMarket: 0, soldDate: "", strength: "average", notes: "" }] })}
               onUpdateComp={(id, u) => updateDeal({ comps: activeDeal.comps.map((c) => c.id === id ? { ...c, ...u } : c) })}
               onDeleteComp={(id) => updateDeal({ comps: activeDeal.comps.filter((c) => c.id !== id) })}
               onUpdateSubjectSqft={(v) => updateDeal({ subjectSqft: v })}
-              onApplyArv={(v) => { updateInputs({ arv: v }); setActiveTab("deal"); }} />
+              onApplyArv={(v) => { updateInputs({ arv: v }); setActiveTab("deal"); }}
+              onAddMultipleComps={(newComps) => updateDeal({ comps: [...activeDeal.comps, ...newComps.map((c) => ({ ...c, id: uid() }))] })}
+              onApplyRent={(v) => updateInputs({ monthlyRent: v })} />
           )}
 
           {activeTab === "rental" && (
