@@ -1315,6 +1315,57 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmai
   );
 }
 
+// ─── Onboarding Modal ─────────────────────────────────────────────────────────
+function OnboardingModal({ onClose, onNewDeal, isMobile = false }: { onClose: () => void; onNewDeal: () => void; isMobile?: boolean }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 16 : 24 }}>
+      <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12, padding: isMobile ? 24 : 40, maxWidth: 480, width: "100%", boxSizing: "border-box" }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 800, color: "#f1f5f9", marginBottom: 6 }}>
+            FLIP<span style={{ color: "#3b82f6" }}>LOGIC</span> AI
+          </div>
+          <div style={{ fontSize: 13, color: "#475569" }}>Welcome to your deal analysis command center</div>
+        </div>
+
+        <div style={{ marginBottom: 28 }}>
+          {[
+            { icon: "🏠", title: "Analyze any deal in minutes", text: "Enter a property address and financials — get instant ROI, LTV, profit projections, and a HOT / WARM / COLD / DEAD deal score." },
+            { icon: "🤖", title: "AI-powered property walkthrough", text: "Record audio or video at the property. AI transcribes your words and generates a full scope of work with cost estimates." },
+            { icon: "📊", title: "Auto-pull comps", text: "Enter an address and tap Auto-Pull Comps to instantly populate sale and rental comparables for your market." },
+            { icon: "📄", title: "Print-ready documents", text: "Generate a blind contractor bid sheet and a professional lender packet with one tap." },
+          ].map((item, i) => (
+            <div key={i} style={{ display: "flex", gap: 14, marginBottom: 18 }}>
+              <span style={{ fontSize: 22, flexShrink: 0 }}>{item.icon}</span>
+              <div>
+                <div style={{ fontSize: 13, color: "#f1f5f9", fontWeight: 700, marginBottom: 3 }}>{item.title}</div>
+                <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>{item.text}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ background: "#0d1829", border: "1px solid #1e293b", borderRadius: 8, padding: 14, marginBottom: 20, fontSize: 12, color: "#60a5fa", lineHeight: 1.6 }}>
+          💡 A demo deal has been loaded so you can explore the app. When you are ready, create your first real deal using the button below.
+        </div>
+
+        <button
+          type="button"
+          onClick={() => { localStorage.setItem("fliplogic_onboarding_complete", "true"); onNewDeal(); onClose(); }}
+          style={{ width: "100%", background: "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 0" : "14px 0", fontSize: isMobile ? 15 : 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 10 }}>
+          + Create My First Deal
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { localStorage.setItem("fliplogic_onboarding_complete", "true"); onClose(); }}
+          style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#475569", padding: isMobile ? "14px 0" : "12px 0", fontSize: isMobile ? 14 : 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+          Explore the demo first
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -1325,6 +1376,7 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [dbLoading, setDbLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const isMobile = useIsMobile();
   const saveTimer = useRef<any>(null);
 
@@ -1424,6 +1476,10 @@ export default function App() {
 
       setDeals(assembled);
       if (assembled.length > 0) setActiveDealId(assembled[0].id);
+      const hasSeenOnboarding = localStorage.getItem("fliplogic_onboarding_complete");
+      if (!hasSeenOnboarding) {
+        setShowOnboarding(true);
+      }
     } catch (err) {
       console.error("Error loading deals:", err);
     }
@@ -1882,6 +1938,13 @@ export default function App() {
           )}
         </div>
       </div>
+      {showOnboarding && (
+        <OnboardingModal
+          isMobile={isMobile}
+          onClose={() => setShowOnboarding(false)}
+          onNewDeal={() => { void handleNewDeal(); }}
+        />
+      )}
     </div>
   );
 }
