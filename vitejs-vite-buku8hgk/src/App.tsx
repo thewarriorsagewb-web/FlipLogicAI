@@ -1662,7 +1662,6 @@ export default function App() {
                 };
                 setDeals((prev) => prev.map((d) => d.id === activeDeal.id ? updatedDeal : d));
 
-                // Direct Supabase insert — bypass saveDeal entirely
                 try {
                   if (compsWithIds.length > 0) {
                     const { error: compsError } = await supabase.from("comps").insert(
@@ -1681,7 +1680,6 @@ export default function App() {
                       }))
                     );
                     if (compsError) console.error("Direct comps insert error:", compsError);
-                    else console.log("Direct comps insert success:", compsWithIds.length, "comps");
                   }
                   if (rentEstimate > 0) {
                     const { error: rentError } = await supabase
@@ -1690,7 +1688,6 @@ export default function App() {
                       .eq("id", activeDeal.id)
                       .eq("user_id", user.id);
                     if (rentError) console.error("Rent update error:", rentError);
-                    else console.log("Rent update success:", rentEstimate);
                   }
                 } catch (err) {
                   console.error("RentCast save error:", err);
