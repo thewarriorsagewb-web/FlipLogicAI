@@ -780,13 +780,11 @@ function CompCard({ comp, onUpdate, onDelete, isMobile = false }: { comp: Comp; 
 }
 
 // ─── Comps Tab ────────────────────────────────────────────────────────────────
-function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onDeleteComp, onUpdateSubjectSqft, onApplyArv, onAddMultipleComps, onApplyRent, onPersistComps, supabase, dealId: _dealId, propertyAddress, isMobile = false }: {
+function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onDeleteComp, onUpdateSubjectSqft, onApplyArv, onRentCastSuccess, supabase, dealId: _dealId, propertyAddress, isMobile = false }: {
   comps: Comp[]; subjectSqft: number; enteredArv: number;
   onAddComp: () => void; onUpdateComp: (id: string, u: Partial<Comp>) => void;
   onDeleteComp: (id: string) => void; onUpdateSubjectSqft: (v: number) => void; onApplyArv: (v: number) => void;
-  onAddMultipleComps: (newComps: Omit<Comp, "id">[]) => void;
-  onApplyRent: (rent: number) => void;
-  onPersistComps: (comps: Omit<Comp, "id">[], rentEstimate: number) => Promise<void>;
+  onRentCastSuccess: (newComps: Omit<Comp, "id">[], rentEstimate: number) => void;
   supabase: SupabaseClient;
   dealId: string;
   propertyAddress: string;
@@ -825,13 +823,7 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
       const rentEst = typeof payload.rentEstimate === "number" ? payload.rentEstimate : 0;
       const room = Math.max(0, 6 - comps.length);
       const toAdd = saleList.slice(0, room);
-      await onPersistComps(toAdd, rentEst);
-      if (toAdd.length > 0) {
-        onAddMultipleComps(toAdd);
-      }
-      if (rentEst > 0) {
-        onApplyRent(Math.round(rentEst));
-      }
+      onRentCastSuccess(toAdd, rentEst);
       setPullSuccess(`Pulled ${toAdd.length} sale comps and rent estimate of ${fmt(rentEst)} from RentCast`);
     } catch (e: unknown) {
       setPullError(e instanceof Error ? e.message : "Failed to pull comps");
@@ -1653,35 +1645,22 @@ export default function App() {
               }}
               onUpdateSubjectSqft={(v) => updateDeal({ subjectSqft: v })}
               onApplyArv={(v) => { updateInputs({ arv: v }); setActiveTab("deal"); }}
-              onAddMultipleComps={(newComps) => updateDeal({ comps: [...activeDeal.comps, ...newComps.map((c) => ({ ...c, id: uid() }))] })}
-              onApplyRent={(v) => updateInputs({ monthlyRent: v })}
-              onPersistComps={async (newComps, rentEstimate) => {
+              onRentCastSuccess={(newComps, rentEstimate) => {
                 if (!activeDeal || !user) return;
-                const compsWithIds = newComps.map((c) => ({ ...c, id: uid() }));
-
-                if (compsWithIds.length > 0) {
-                  await supabase.from("comps").insert(
-                    compsWithIds.map((c) => ({
-                      id: c.id,
-                      deal_id: activeDeal.id,
-                      user_id: user.id,
-                      address: c.address,
-                      sale_price: c.salePrice,
-                      sqft: c.sqft,
-                      bed_bath: c.bedBath,
-                      days_on_market: c.daysOnMarket,
-                      sold_date: c.soldDate,
-                      strength: c.strength,
-                      notes: c.notes,
-                    }))
-                  );
-                }
-
-                if (rentEstimate > 0) {
-                  await supabase.from("deals").update({
-                    monthly_rent: rentEstimate,
-                  }).eq("id", activeDeal.id);
-                }
+                const compsWithIds: Comp[] = newComps.map((c) => ({ ...c, id: uid() }));
+                const updatedComps = [...activeDeal.comps, ...compsWithIds];
+                const updatedInputs = rentEstimate > 0
+                  ? { ...activeDeal.inputs, monthlyRent: rentEstimate }
+                  : activeDeal.inputs;
+                const updatedDeal: Deal = {
+                  ...activeDeal,
+                  inputs: updatedInputs,
+                  comps: updatedComps,
+                  updatedAt: new Date().toISOString(),
+                };
+                setDeals((prev) => prev.map((d) => d.id === activeDeal.id ? updatedDeal : d));
+                if (saveTimer.current) clearTimeout(saveTimer.current);
+                void saveDeal(updatedDeal);
               }} />
           )}
 
