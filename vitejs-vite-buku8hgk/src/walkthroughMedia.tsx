@@ -401,9 +401,16 @@ export function WalkthroughMediaRecorder({
     onAnalyzing(true);
     try {
       const { data, error } = await supabase.functions.invoke("analyze-walkthrough", { body });
-      if (error) throw new Error(error.message || String(error));
-      const findings = (data as { findings?: AIFinding[] })?.findings;
-      if (!findings || !Array.isArray(findings)) throw new Error("Invalid response from analyze-walkthrough");
+      if (error) {
+        const detail = (error as unknown as { context?: { json?: () => Promise<unknown> } }).context?.json
+          ? JSON.stringify(await (error as unknown as { context: { json: () => Promise<unknown> } }).context.json())
+          : error.message || String(error);
+        throw new Error(detail);
+      }
+      const findings = (data as { findings?: AIFinding[]; error?: string })?.findings;
+      const serverError = (data as { error?: string })?.error;
+      if (serverError) throw new Error(serverError);
+      if (!findings || !Array.isArray(findings)) throw new Error("Invalid response: " + JSON.stringify(data));
       onFindings(findings);
     } catch (e: unknown) {
       setAnalyzeError(e instanceof Error ? e.message : "Analysis failed");
