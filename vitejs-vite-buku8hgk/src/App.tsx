@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef, type CSSProperties } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties, type ReactNode } from "react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { AIFinding, WalkthroughCaptureMode, PendingWalkthroughJob } from "./walkthroughTypes";
-import { WalkthroughMediaRecorder, WALKTHROUGH_TRIGGER_KEY, loadPendingJobs, savePendingJobs } from "./walkthroughMedia";
+import { WalkthroughMediaRecorder, WALKTHROUGH_TRIGGER_KEY, loadPendingJobs, savePendingJobs, type AIGateDeal } from "./walkthroughMedia";
+import { useSubscription } from "./useSubscription";
+import { PaywallModal } from "./PaywallModal";
 // ─── Supabase Client ──────────────────────────────────────────────────────────
 const SUPABASE_URL = "https://gnygraconlpwzvllayoq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdueWdyYWNvbmxwd3p2bGxheW9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NjA4NzQsImV4cCI6MjA5MTUzNjg3NH0.fKZ0G0Q6jGxGrX-onuKmklB1HeSuxyWI3c3lkftOvkg";
@@ -63,6 +65,8 @@ interface Deal {
   inputs: DealInputs; comps: Comp[]; subjectSqft: number;
   lenderInfo: LenderInfo; scopeItems: ScopeItem[];
   rentalComps: RentalComp[];
+  /** First successful AI walkthrough or RentCast on this deal counts toward trial */
+  aiAnalysisUsed?: boolean;
 }
 
 interface DealMetrics {
@@ -120,6 +124,9 @@ const DEMO_SCOPE: ScopeItem[] = [
   { id: "s4", category: "HVAC", description: "HVAC system replacement", quantity: 1, unit: "unit", myEstimate: 6500, notes: "3-ton unit, 15 SEER", priority: "critical" },
   { id: "s5", category: "Electrical", description: "Panel upgrade to 200A", quantity: 1, unit: "lot", myEstimate: 3200, notes: "FPE panel replacement — hazard", priority: "critical" },
 ];
+
+/** Pre-seeded demo deal — excluded from trial usage counting */
+const DEMO_DEAL_ID = "27695e3f-a022-4c13-8f8e-6d290ba5b9d4";
 
 // ─── Financial Engine ─────────────────────────────────────────────────────────
 function calculateMetrics(inputs: DealInputs): DealMetrics {
@@ -348,9 +355,13 @@ function ScenarioRow({ scenario, inputs, isMobile = false }: { scenario: Scenari
 }
 
 // ─── AI WALKTHROUGH TAB ───────────────────────────────────────────────────────
-function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, dealId, userId }: {
+function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, dealId, userId, currentDeal, canUseAI, triggerAIUse, onNeedPaywall }: {
   address: string; buildYear: number; onAddToScope: (items: ScopeItem[]) => void; isMobile?: boolean;
   dealId: string; userId: string;
+  currentDeal: Deal;
+  canUseAI: (deal: AIGateDeal) => boolean;
+  triggerAIUse: (dealId: string) => Promise<void>;
+  onNeedPaywall: (reason: string) => void;
 }) {
   const [walkMode, setWalkMode] = useState<WalkthroughCaptureMode>("photos");
   const [triggerPhrase, setTriggerPhrase] = useState(() => localStorage.getItem(WALKTHROUGH_TRIGGER_KEY) || "flag this");
@@ -412,6 +423,10 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
 
   const syncPendingJob = async (job: PendingWalkthroughJob) => {
     if (!navigator.onLine) return;
+    if (!canUseAI(currentDeal)) {
+      onNeedPaywall("AI Walkthrough requires Investor plan or a free trial analysis");
+      return;
+    }
     setSyncingJobId(job.id);
     setError("");
     try {
@@ -425,6 +440,7 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
       const next = loadPendingJobs().filter((j) => j.id !== job.id);
       savePendingJobs(next);
       setPendingJobs(next);
+      await triggerAIUse(dealId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Sync failed.");
     } finally {
@@ -448,6 +464,10 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
 
   const analyze = async () => {
     if (photos.length === 0) { setError("Please upload at least one property photo."); return; }
+    if (!canUseAI(currentDeal)) {
+      onNeedPaywall("AI Walkthrough requires Investor plan or a free trial analysis");
+      return;
+    }
     setAnalyzing(true);
     setError("");
     setFindings([]);
@@ -478,6 +498,7 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
       setFindings(findings);
       setSelectedFindings(new Set(findings.map((_, i) => i)));
       setStatus(`Analysis complete — ${findings.length} findings identified.`);
+      await triggerAIUse(dealId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Analysis failed.");
     } finally {
@@ -663,6 +684,10 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
                 triggerPhrase={triggerPhrase}
                 dealId={dealId}
                 userId={userId}
+                currentDeal={currentDeal}
+                canUseAI={canUseAI}
+                triggerAIUse={triggerAIUse}
+                onNeedPaywall={onNeedPaywall}
                 onFindings={(f) => {
                   setFindings(f);
                   setSelectedFindings(new Set(f.map((_, i) => i)));
@@ -789,21 +814,29 @@ function CompCard({ comp, onUpdate, onDelete, isMobile = false }: { comp: Comp; 
 }
 
 // ─── Comps Tab ────────────────────────────────────────────────────────────────
-function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onDeleteComp, onUpdateSubjectSqft, onApplyArv, onRentCastSuccess, supabase, dealId: _dealId, propertyAddress, isMobile = false }: {
+function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onDeleteComp, onUpdateSubjectSqft, onApplyArv, onRentCastSuccess, supabase, dealId: _dealId, propertyAddress, isMobile = false, activeDeal, canUseAI, onNeedPaywall, triggerAIUse }: {
   comps: Comp[]; subjectSqft: number; enteredArv: number;
   onAddComp: () => void; onUpdateComp: (id: string, u: Partial<Comp>) => void;
   onDeleteComp: (id: string) => void; onUpdateSubjectSqft: (v: number) => void; onApplyArv: (v: number) => void;
-  onRentCastSuccess: (newComps: Omit<Comp, "id">[], rentEstimate: number, rentalComps: Omit<RentalComp, "id">[]) => void;
+  onRentCastSuccess: (newComps: Omit<Comp, "id">[], rentEstimate: number, rentalComps: Omit<RentalComp, "id">[]) => void | Promise<void>;
   supabase: SupabaseClient;
   dealId: string;
   propertyAddress: string;
   isMobile?: boolean;
+  activeDeal: Deal;
+  canUseAI: (deal: AIGateDeal) => boolean;
+  onNeedPaywall: (reason: string) => void;
+  triggerAIUse: (dealId: string) => Promise<void>;
 }) {
   const [pullingComps, setPullingComps] = useState(false);
   const [pullError, setPullError] = useState("");
   const [pullSuccess, setPullSuccess] = useState("");
 
   const pullCompsFromRentCast = async () => {
+    if (!canUseAI(activeDeal)) {
+      onNeedPaywall("Auto-pulling comps requires Investor plan or a free trial analysis");
+      return;
+    }
     if (!propertyAddress.trim()) {
       setPullError("Enter a property address in the Deal Analysis tab first");
       return;
@@ -838,8 +871,9 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
       const rentalCompsList = payload.rentalComps || [];
       const room = Math.max(0, 6 - comps.length);
       const toAdd = saleList.slice(0, room);
-      onRentCastSuccess(toAdd, rentEst, rentalCompsList);
+      await onRentCastSuccess(toAdd, rentEst, rentalCompsList);
       setPullSuccess(`Pulled ${toAdd.length} sale comps and rent estimate of ${fmt(rentEst)} from RentCast`);
+      await triggerAIUse(activeDeal.id);
     } catch (e: unknown) {
       setPullError(e instanceof Error ? e.message : "Failed to pull comps");
     } finally {
@@ -1250,9 +1284,10 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo, isMobi
 }
 
 // ─── Deals Sidebar ────────────────────────────────────────────────────────────
-function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmail, onSignOut, syncing, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
+function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmail, onSignOut, syncing, subscriptionPanel, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
   deals: Deal[]; activeDealId: string; onSelect: (id: string) => void; onNew: () => void; onDelete: (id: string) => void;
   userEmail: string; onSignOut: () => void; syncing: boolean;
+  subscriptionPanel?: ReactNode;
   variant?: "sidebar" | "drawer"; drawerOpen?: boolean; onCloseDrawer?: () => void;
 }) {
   const isDrawer = variant === "drawer";
@@ -1306,6 +1341,11 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmai
           );
         })}
       </div>
+      {subscriptionPanel && (
+        <div style={{ padding: "12px 14px", borderTop: "1px solid #1e293b", flexShrink: 0 }}>
+          {subscriptionPanel}
+        </div>
+      )}
       <div style={{ padding: "12px 14px", borderTop: "1px solid #1e293b", flexShrink: 0 }}>
         <div style={{ fontSize: 11, color: syncing ? "#f59e0b" : "#22c55e", marginBottom: 6, textAlign: "center" }}>{syncing ? "⟳ Saving..." : "✓ Synced to cloud"}</div>
         <div style={{ fontSize: 11, color: "#334155", marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>{userEmail}</div>
@@ -1379,6 +1419,186 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const isMobile = useIsMobile();
   const saveTimer = useRef<any>(null);
+
+  const { subscription, loading: subLoading, refetch: refetchSubscription } = useSubscription(supabase, user?.id ?? null);
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [paywallReason, setPaywallReason] = useState("");
+  const [activityToast, setActivityToast] = useState<{ text: string; ms: number } | null>(null);
+
+  const openPaywall = useCallback((reason: string) => {
+    setPaywallReason(reason);
+    setPaywallOpen(true);
+  }, []);
+
+  const canUseAI = useCallback(
+    (deal: AIGateDeal) => {
+      if (deal.aiAnalysisUsed) return true;
+      const sub = subscription;
+      if (!sub) {
+        return 0 < 5;
+      }
+      if (sub.status === "active") return true;
+      if (sub.status === "trial" && sub.trial_deals_used < sub.trial_deals_limit) return true;
+      return false;
+    },
+    [subscription],
+  );
+
+  const triggerAIUse = useCallback(
+    async (dealId: string) => {
+      if (!user) return;
+      const deal = deals.find((d) => d.id === dealId);
+      if (!deal || deal.aiAnalysisUsed) return;
+
+      try {
+        if (dealId !== DEMO_DEAL_ID) {
+          const { error: de } = await supabase.from("deals").update({ ai_analysis_used: true }).eq("id", dealId);
+          if (de) {
+            console.error("triggerAIUse deal update failed:", de);
+            return;
+          }
+          setDeals((prev) => prev.map((d) => (d.id === dealId ? { ...d, aiAnalysisUsed: true } : d)));
+        } else {
+          if (!deal.aiAnalysisUsed) {
+            const { error: de } = await supabase.from("deals").update({ ai_analysis_used: true }).eq("id", dealId);
+            if (de) console.error("triggerAIUse demo deal update failed:", de);
+            setDeals((prev) => prev.map((d) => (d.id === dealId ? { ...d, aiAnalysisUsed: true } : d)));
+          }
+          return;
+        }
+
+        const { data: sub, error: se } = await supabase
+          .from("subscriptions")
+          .select("status, trial_deals_used")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (se) {
+          console.error("triggerAIUse sub read failed:", se);
+          return;
+        }
+        if (sub?.status === "trial") {
+          const used = Number((sub as { trial_deals_used?: number }).trial_deals_used) || 0;
+          const { error: up } = await supabase.from("subscriptions").update({ trial_deals_used: used + 1 }).eq("user_id", user.id);
+          if (up) console.error("triggerAIUse trial increment failed:", up);
+        }
+      } catch (e) {
+        console.error("triggerAIUse:", e);
+      }
+    },
+    [deals, user],
+  );
+
+  const subscriptionPanel = useMemo(() => {
+    if (subLoading && !subscription) {
+      return <div style={{ fontSize: 11, color: "#64748b" }}>Loading subscription…</div>;
+    }
+    const s = subscription;
+    if (!s) return <div style={{ fontSize: 11, color: "#64748b" }}>Plan unavailable</div>;
+
+    if (s.status === "trial") {
+      const used = s.trial_deals_used;
+      const lim = Math.max(1, s.trial_deals_limit);
+      const pct = Math.min(100, (used / lim) * 100);
+      return (
+        <div>
+          <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 6 }}>Subscription</div>
+          <div style={{ fontSize: 11, color: "#e2e8f0", fontWeight: 700, marginBottom: 8 }}>
+            FREE TRIAL: {used} of {s.trial_deals_limit} analyses used
+          </div>
+          <div style={{ background: "#1e293b", borderRadius: 4, height: 6, overflow: "hidden" }}>
+            <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg, #3b82f6, #6366f1)", transition: "width 0.3s" }} />
+          </div>
+        </div>
+      );
+    }
+    if (s.status === "active" && s.plan === "investor_monthly") {
+      return <div style={{ fontSize: 12, color: "#22c55e", fontWeight: 700 }}>✓ INVESTOR — Monthly</div>;
+    }
+    if (s.status === "active" && s.plan === "investor_annual") {
+      return <div style={{ fontSize: 12, color: "#22c55e", fontWeight: 700 }}>✓ INVESTOR — Annual</div>;
+    }
+    if (s.status === "active") {
+      return <div style={{ fontSize: 12, color: "#22c55e", fontWeight: 700 }}>✓ INVESTOR</div>;
+    }
+    if (s.status === "past_due") {
+      return (
+        <div>
+          <div style={{ fontSize: 11, color: "#fb923c", fontWeight: 800, marginBottom: 8 }}>PAYMENT OVERDUE</div>
+          <button
+            type="button"
+            onClick={() => openPaywall("Update your payment method to keep Investor access.")}
+            style={{
+              width: "100%",
+              background: "#7c2d12",
+              border: "1px solid #ea580c",
+              borderRadius: 6,
+              color: "#ffedd5",
+              padding: "8px 0",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: "'Syne', sans-serif",
+            }}
+          >
+            Update Payment
+          </button>
+        </div>
+      );
+    }
+    if (s.status === "canceled" || s.status === "expired") {
+      return (
+        <div>
+          <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, marginBottom: 8 }}>FREE PLAN</div>
+          <button
+            type="button"
+            onClick={() => openPaywall("Upgrade to unlock AI features.")}
+            style={{
+              width: "100%",
+              background: "#1d4ed8",
+              border: "none",
+              borderRadius: 6,
+              color: "#fff",
+              padding: "8px 0",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: "'Syne', sans-serif",
+            }}
+          >
+            Upgrade
+          </button>
+        </div>
+      );
+    }
+    return <div style={{ fontSize: 11, color: "#64748b" }}>Plan: {s.plan} · {s.status}</div>;
+  }, [subscription, subLoading, openPaywall]);
+
+  useEffect(() => {
+    if (!activityToast) return;
+    const t = window.setTimeout(() => setActivityToast(null), activityToast.ms);
+    return () => window.clearTimeout(t);
+  }, [activityToast]);
+
+  useEffect(() => {
+    if (!user || typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const c = sp.get("checkout");
+    if (c === "success") {
+      setActivityToast({ text: "Welcome to FlipLogic AI Investor!", ms: 5000 });
+      void refetchSubscription();
+      const u = new URL(window.location.href);
+      u.searchParams.delete("checkout");
+      u.searchParams.delete("session_id");
+      const path = u.pathname + (u.search || "") + u.hash;
+      window.history.replaceState({}, "", path);
+    } else if (c === "cancelled") {
+      setActivityToast({ text: "Payment was cancelled", ms: 3000 });
+      const u = new URL(window.location.href);
+      u.searchParams.delete("checkout");
+      const path = u.pathname + (u.search || "") + u.hash;
+      window.history.replaceState({}, "", path);
+    }
+  }, [user, refetchSubscription]);
 
   useEffect(() => {
     if (isMobile && sidebarOpen) document.body.style.overflow = "hidden";
@@ -1472,6 +1692,7 @@ export default function App() {
           bedBath: r.bed_bath || "",
           distance: r.distance || "",
         })),
+        aiAnalysisUsed: d.ai_analysis_used === true,
       }));
 
       setDeals(assembled);
@@ -1489,6 +1710,7 @@ export default function App() {
   const createDemoDeal = async () => {
     const { data: dealData, error } = await supabase.from("deals").insert({
       user_id: user.id,
+      ai_analysis_used: true,
       property_address: DEMO_INPUTS.propertyAddress,
       purchase_price: DEMO_INPUTS.purchasePrice,
       rehab_cost: DEMO_INPUTS.rehabCost,
@@ -1523,6 +1745,7 @@ export default function App() {
     try {
       await supabase.from("deals").upsert({
         id: deal.id, user_id: user.id, updated_at: new Date().toISOString(),
+        ai_analysis_used: deal.aiAnalysisUsed === true,
         property_address: deal.inputs.propertyAddress,
         purchase_price: deal.inputs.purchasePrice,
         rehab_cost: deal.inputs.rehabCost,
@@ -1625,13 +1848,14 @@ export default function App() {
     if (!user) return;
     const { data, error } = await supabase.from("deals").insert({
       user_id: user.id,
+      ai_analysis_used: false,
       property_address: "", purchase_price: 0, rehab_cost: 0, arv: 0, loan_amount: 0,
       interest_rate: 11.5, loan_term_months: 12, holding_months: 6,
       closing_costs_buy: 0, closing_costs_sell: 0, monthly_rent: 0, monthly_expenses: 0,
       notes: "", deal_status: "prospect", subject_sqft: 0, lender_info: BLANK_LENDER_INFO,
     }).select().single();
     if (error || !data) return;
-    const nd: Deal = { id: data.id, createdAt: data.created_at, updatedAt: data.updated_at, inputs: { ...BLANK_INPUTS }, comps: [], subjectSqft: 0, lenderInfo: { ...BLANK_LENDER_INFO }, scopeItems: [], rentalComps: [] };
+    const nd: Deal = { id: data.id, createdAt: data.created_at, updatedAt: data.updated_at, inputs: { ...BLANK_INPUTS }, comps: [], subjectSqft: 0, lenderInfo: { ...BLANK_LENDER_INFO }, scopeItems: [], rentalComps: [], aiAnalysisUsed: false };
     setDeals((prev) => [nd, ...prev]);
     setActiveDealId(nd.id);
     setActiveTab("deal");
@@ -1704,8 +1928,8 @@ export default function App() {
           }}
         />
       )}
-      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleNewDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} variant="sidebar" />}
-      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleNewDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
+      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleNewDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="sidebar" />}
+      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleNewDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", minWidth: 0 }}>
         {/* Header */}
         <div style={{ background: "linear-gradient(135deg, #060b14 0%, #0d1829 100%)", borderBottom: "1px solid #1e293b", padding: isMobile ? "12px 14px" : "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
@@ -1736,6 +1960,22 @@ export default function App() {
           <input type="text" value={inputs.propertyAddress} onChange={(e) => set("propertyAddress")(e.target.value)} placeholder="Enter property address..."
             style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "#94a3b8", fontSize: isMobile ? 15 : 13, fontFamily: "monospace", boxSizing: "border-box", minHeight: isMobile ? 44 : undefined, padding: isMobile ? "4px 0" : 0 }} />
         </div>
+        {activityToast && (
+          <div
+            style={{
+              padding: isMobile ? "10px 14px" : "10px 24px",
+              background: activityToast.text.includes("Welcome") ? "#0d3d1f" : "#1e293b",
+              borderBottom: "1px solid " + (activityToast.text.includes("Welcome") ? "#16a34a" : "#334155"),
+              color: activityToast.text.includes("Welcome") ? "#22c55e" : "#94a3b8",
+              fontSize: 13,
+              fontWeight: 600,
+              flexShrink: 0,
+            }}
+            role="status"
+          >
+            {activityToast.text}
+          </div>
+        )}
         {inputs.propertyAddress === "123 Main St, Atlanta, GA 30301" && (
           <div style={{ padding: isMobile ? "8px 14px" : "8px 24px", background: "#2d2000", borderBottom: "1px solid #d97706", fontSize: isMobile ? 12 : 11, color: "#f59e0b", letterSpacing: "0.08em", flexShrink: 0, fontWeight: 600 }}>
             📋 This is a demo deal with sample data. Create a new deal in the sidebar to analyze a real property.
@@ -1807,12 +2047,29 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === "ai" && <AIWalkthroughTab address={inputs.propertyAddress} buildYear={1970} onAddToScope={handleAddAIToScope} isMobile={isMobile} dealId={activeDeal.id} userId={user.id} />}
+          {activeTab === "ai" && (
+            <AIWalkthroughTab
+              address={inputs.propertyAddress}
+              buildYear={1970}
+              onAddToScope={handleAddAIToScope}
+              isMobile={isMobile}
+              dealId={activeDeal.id}
+              userId={user.id}
+              currentDeal={activeDeal}
+              canUseAI={canUseAI}
+              triggerAIUse={triggerAIUse}
+              onNeedPaywall={openPaywall}
+            />
+          )}
 
           {activeTab === "comps" && (
             <CompsTab comps={activeDeal.comps} subjectSqft={activeDeal.subjectSqft} enteredArv={inputs.arv} isMobile={isMobile}
               supabase={supabase}
               dealId={activeDeal.id}
+              activeDeal={activeDeal}
+              canUseAI={canUseAI}
+              onNeedPaywall={openPaywall}
+              triggerAIUse={triggerAIUse}
               propertyAddress={inputs.propertyAddress}
               onAddComp={() => updateDeal({ comps: [...activeDeal.comps, { id: uid(), address: "", salePrice: 0, sqft: 0, bedBath: "", daysOnMarket: 0, soldDate: "", strength: "average", notes: "" }] })}
               onUpdateComp={(id, u) => updateDeal({ comps: activeDeal.comps.map((c) => c.id === id ? { ...c, ...u } : c) })}
@@ -1945,6 +2202,13 @@ export default function App() {
           onNewDeal={() => { void handleNewDeal(); }}
         />
       )}
+      <PaywallModal
+        isOpen={paywallOpen}
+        onClose={() => setPaywallOpen(false)}
+        reason={paywallReason || "Upgrade to use AI features."}
+        supabaseClient={supabase}
+        returnUrl={typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : "https://charming-pudding-d20567.netlify.app"}
+      />
     </div>
   );
 }

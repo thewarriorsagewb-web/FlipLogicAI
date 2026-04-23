@@ -53,6 +53,9 @@ function uid() {
   return crypto.randomUUID();
 }
 
+/** Minimal deal shape for AI trial / subscription gating (mirrors App Deal) */
+export type AIGateDeal = { id: string; aiAnalysisUsed?: boolean };
+
 export function WalkthroughMediaRecorder({
   mode,
   address,
@@ -64,6 +67,10 @@ export function WalkthroughMediaRecorder({
   onAnalyzing,
   dealId,
   userId,
+  currentDeal,
+  canUseAI,
+  triggerAIUse,
+  onNeedPaywall,
 }: {
   mode: RecMode;
   address: string;
@@ -75,6 +82,10 @@ export function WalkthroughMediaRecorder({
   onAnalyzing: (b: boolean) => void;
   dealId: string;
   userId: string;
+  currentDeal: AIGateDeal;
+  canUseAI: (deal: AIGateDeal) => boolean;
+  triggerAIUse: (id: string) => Promise<void>;
+  onNeedPaywall: (reason: string) => void;
 }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [phase, setPhase] = useState<RecPhase>("idle");
@@ -430,6 +441,11 @@ export function WalkthroughMediaRecorder({
       } catch (saveErr) {
         console.error("Could not save findings:", saveErr);
       }
+      try {
+        await triggerAIUse(dealId);
+      } catch (tuErr) {
+        console.error("triggerAIUse after walkthrough:", tuErr);
+      }
     } catch (e: unknown) {
       setAnalyzeError(e instanceof Error ? e.message : "Analysis failed");
     } finally {
@@ -441,6 +457,10 @@ export function WalkthroughMediaRecorder({
   const analyzeFromStopped = async () => {
     if (!navigator.onLine) {
       setAnalyzeError("You are offline. Recording is queued — connect and use Sync from the list below.");
+      return;
+    }
+    if (!canUseAI(currentDeal)) {
+      onNeedPaywall("AI Walkthrough requires Investor plan or a free trial analysis");
       return;
     }
     try {
