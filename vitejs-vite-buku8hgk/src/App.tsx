@@ -10,11 +10,22 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+type RehabCostSource = "initial" | "ai_walkthrough" | "manual";
+type ArvSource = "initial" | "comp_derived";
+
 interface DealInputs {
   propertyAddress: string;
   purchasePrice: number;
+  /** Computed from active rehab source — kept in sync for metrics + save */
   rehabCost: number;
+  /** Initial / baseline rehab figure (editable) */
+  rehabInitialEstimate: number;
+  rehabManualOverride: number;
+  rehabCostSource: RehabCostSource;
+  /** Computed from active ARV source — kept in sync for metrics + save */
   arv: number;
+  arvInitialEstimate: number;
+  arvSource: ArvSource;
   loanAmount: number;
   interestRate: number;
   loanTermMonths: number;
@@ -63,6 +74,8 @@ interface WalkthroughPhoto {
 interface Deal {
   id: string; createdAt: string; updatedAt: string;
   inputs: DealInputs; comps: Comp[]; subjectSqft: number;
+  subjectBedrooms: number;
+  subjectBathrooms: number;
   lenderInfo: LenderInfo; scopeItems: ScopeItem[];
   rentalComps: RentalComp[];
   /** First successful AI walkthrough or RentCast on this deal counts toward trial */
@@ -92,7 +105,16 @@ const SCOPE_CATEGORIES = [
 ];
 
 const BLANK_INPUTS: DealInputs = {
-  propertyAddress: "", purchasePrice: 0, rehabCost: 0, arv: 0, loanAmount: 0,
+  propertyAddress: "",
+  purchasePrice: 0,
+  rehabInitialEstimate: 0,
+  rehabManualOverride: 0,
+  rehabCostSource: "initial",
+  rehabCost: 0,
+  arvInitialEstimate: 0,
+  arvSource: "initial",
+  arv: 0,
+  loanAmount: 0,
   interestRate: 11.5, loanTermMonths: 12, holdingMonths: 6,
   closingCostsBuy: 0, closingCostsSell: 0, monthlyRent: 0, monthlyExpenses: 0,
   notes: "", dealStatus: "prospect",
@@ -104,7 +126,15 @@ const BLANK_LENDER_INFO: LenderInfo = {
 
 const DEMO_INPUTS: DealInputs = {
   propertyAddress: "123 Main St, Atlanta, GA 30301",
-  purchasePrice: 120000, rehabCost: 45000, arv: 225000, loanAmount: 148500,
+  purchasePrice: 120000,
+  rehabInitialEstimate: 45000,
+  rehabManualOverride: 0,
+  rehabCostSource: "initial",
+  rehabCost: 45000,
+  arvInitialEstimate: 225000,
+  arvSource: "initial",
+  arv: 225000,
+  loanAmount: 148500,
   interestRate: 11.5, loanTermMonths: 12, holdingMonths: 6,
   closingCostsBuy: 3500, closingCostsSell: 13500, monthlyRent: 1800, monthlyExpenses: 400,
   notes: "Solid bones. Needs full kitchen/bath remodel. Roof is 4 years old — good shape.",
@@ -163,6 +193,33 @@ function calculateCompARV(comps: Comp[], subjectSqft: number) {
   const strongAvg = strong.length > 0 ? strong.reduce((s, c) => s + c.salePrice, 0) / strong.length : 0;
   const allAvg = valid.reduce((s, c) => s + c.salePrice, 0) / valid.length;
   return { weightedArv, avgPpsf, strongAvg, allAvg };
+}
+
+function calculateAIWalkthroughRehab(scopeItems: ScopeItem[]): number {
+  return scopeItems.reduce((s, i) => s + (i.myEstimate || 0), 0);
+}
+
+function calculateActiveRehab(inputs: DealInputs, scopeItems: ScopeItem[]): number {
+  if (inputs.rehabCostSource === "ai_walkthrough") {
+    return calculateAIWalkthroughRehab(scopeItems);
+  }
+  if (inputs.rehabCostSource === "manual") {
+    return inputs.rehabManualOverride;
+  }
+  return inputs.rehabInitialEstimate;
+}
+
+function calculateActiveARV(inputs: DealInputs, comps: Comp[], subjectSqft: number): number {
+  if (inputs.arvSource === "comp_derived") {
+    return calculateCompARV(comps, subjectSqft).weightedArv;
+  }
+  return inputs.arvInitialEstimate;
+}
+
+function applySyncedRehabArv(d: Deal): Deal {
+  const r = calculateActiveRehab(d.inputs, d.scopeItems);
+  const a = calculateActiveARV(d.inputs, d.comps, d.subjectSqft);
+  return { ...d, inputs: { ...d.inputs, rehabCost: r, arv: a } };
 }
 
 const fmt = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
@@ -297,14 +354,14 @@ function AuthScreen({ onAuth }: { onAuth: () => void }) {
 }
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
-function InputField({ label, value, onChange, prefix = "$", suffix = "", isMobile = false }: {
-  label: string; value: number; onChange: (v: number) => void; prefix?: string; suffix?: string; isMobile?: boolean;
+function InputField({ label, value, onChange, prefix = "$", suffix = "", isMobile = false, hideLabel = false }: {
+  label: string; value: number; onChange: (v: number) => void; prefix?: string; suffix?: string; isMobile?: boolean; hideLabel?: boolean;
 }) {
   const pad = isMobile ? "12px 14px" : "8px 10px";
   const minH = isMobile ? 44 : undefined;
   return (
-    <div style={{ marginBottom: isMobile ? 14 : 12 }}>
-      <label style={{ display: "block", fontSize: isMobile ? 12 : 11, color: "#94a3b8", marginBottom: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</label>
+    <div style={{ marginBottom: hideLabel ? 0 : isMobile ? 14 : 12 }}>
+      {!hideLabel && <label style={{ display: "block", fontSize: isMobile ? 12 : 11, color: "#94a3b8", marginBottom: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</label>}
       <div style={{ display: "flex", alignItems: "center", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden", width: "100%", minHeight: minH }}>
         {prefix && <span style={{ padding: pad, color: "#475569", fontSize: isMobile ? 14 : 13, background: "#0a0f1a", borderRight: "1px solid #1e293b", display: "flex", alignItems: "center", minHeight: minH }}>{prefix}</span>}
         <input type="number" value={value || ""} onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
@@ -814,7 +871,7 @@ function CompCard({ comp, onUpdate, onDelete, isMobile = false }: { comp: Comp; 
 }
 
 // ─── Comps Tab ────────────────────────────────────────────────────────────────
-function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onDeleteComp, onUpdateSubjectSqft, onApplyArv, onRentCastSuccess, supabase, dealId: _dealId, propertyAddress, isMobile = false, activeDeal, canUseAI, onNeedPaywall, triggerAIUse }: {
+function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onDeleteComp, onUpdateSubjectSqft: _onUpdateSubjectSqft, onApplyArv, onRentCastSuccess, supabase, dealId: _dealId, propertyAddress, isMobile = false, activeDeal, canUseAI, onNeedPaywall, triggerAIUse }: {
   comps: Comp[]; subjectSqft: number; enteredArv: number;
   onAddComp: () => void; onUpdateComp: (id: string, u: Partial<Comp>) => void;
   onDeleteComp: (id: string) => void; onUpdateSubjectSqft: (v: number) => void; onApplyArv: (v: number) => void;
@@ -917,11 +974,12 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 14 : 16, marginBottom: 20, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: isMobile ? 16 : 14 }}>
         <div style={{ flex: 1, width: isMobile ? "100%" : undefined }}>
           <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Subject Sq Ft</div>
-          <div style={{ display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden", maxWidth: isMobile ? "100%" : 160, minHeight: isMobile ? 44 : undefined }}>
-            <input type="number" value={subjectSqft || ""} onChange={(e) => onUpdateSubjectSqft(parseFloat(e.target.value) || 0)}
-              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: isMobile ? "12px 14px" : "8px 10px", fontSize: isMobile ? 16 : 14, fontFamily: "monospace" }} />
+          <div style={{ display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden", maxWidth: isMobile ? "100%" : 160, minHeight: isMobile ? 44 : undefined, opacity: 0.85 }}>
+            <input type="number" value={subjectSqft || ""} readOnly disabled
+              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#94a3b8", padding: isMobile ? "12px 14px" : "8px 10px", fontSize: isMobile ? 16 : 14, fontFamily: "monospace", cursor: "not-allowed" }} />
             <span style={{ padding: isMobile ? "12px 10px" : "8px 8px", color: "#475569", fontSize: isMobile ? 12 : 11, background: "#0a0f1a", borderLeft: "1px solid #1e293b" }}>sqft</span>
           </div>
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.35 }}>Edit on Deal Analysis tab → Property Specs</div>
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Your ARV</div>
@@ -1653,47 +1711,61 @@ export default function App() {
       const { data: scopeData } = await supabase.from("scope_items").select("*").in("deal_id", dealIds);
       const { data: rentalCompsData } = await supabase.from("rental_comps").select("*").in("deal_id", dealIds);
 
-      const assembled: Deal[] = dealsData.map((d: any) => ({
-        id: d.id,
-        createdAt: d.created_at,
-        updatedAt: d.updated_at,
-        subjectSqft: d.subject_sqft || 0,
-        lenderInfo: d.lender_info || BLANK_LENDER_INFO,
-        inputs: {
-          propertyAddress: d.property_address || "",
-          purchasePrice: d.purchase_price || 0,
-          rehabCost: d.rehab_cost || 0,
-          arv: d.arv || 0,
-          loanAmount: d.loan_amount || 0,
-          interestRate: d.interest_rate || 11.5,
-          loanTermMonths: d.loan_term_months || 12,
-          holdingMonths: d.holding_months || 6,
-          closingCostsBuy: d.closing_costs_buy || 0,
-          closingCostsSell: d.closing_costs_sell || 0,
-          monthlyRent: d.monthly_rent || 0,
-          monthlyExpenses: d.monthly_expenses || 0,
-          notes: d.notes || "",
-          dealStatus: d.deal_status || "prospect",
-        },
-        comps: (compsData || []).filter((c: any) => c.deal_id === d.id).map((c: any) => ({
-          id: c.id, address: c.address || "", salePrice: c.sale_price || 0,
-          sqft: c.sqft || 0, bedBath: c.bed_bath || "", daysOnMarket: c.days_on_market || 0,
-          soldDate: c.sold_date || "", strength: c.strength || "average", notes: c.notes || "",
-        })),
-        scopeItems: (scopeData || []).filter((s: any) => s.deal_id === d.id).map((s: any) => ({
-          id: s.id, category: s.category || "Other", description: s.description || "",
-          quantity: s.quantity || 1, unit: s.unit || "lot", myEstimate: s.my_estimate || 0,
-          notes: s.notes || "", priority: s.priority || "important",
-        })),
-        rentalComps: (rentalCompsData || []).filter((r: any) => r.deal_id === d.id).map((r: any) => ({
-          id: r.id,
-          address: r.address || "",
-          monthlyRent: Number(r.monthly_rent) || 0,
-          bedBath: r.bed_bath || "",
-          distance: r.distance || "",
-        })),
-        aiAnalysisUsed: d.ai_analysis_used === true,
-      }));
+      const assembled: Deal[] = dealsData.map((d: any) => {
+        const rawRehab = d.rehab_initial_estimate != null ? Number(d.rehab_initial_estimate) : (d.rehab_cost != null ? Number(d.rehab_cost) : 0);
+        const rawArv = d.arv_initial_estimate != null ? Number(d.arv_initial_estimate) : (d.arv != null ? Number(d.arv) : 0);
+        const rcs = (d.rehab_cost_source as RehabCostSource) || "initial";
+        const arvS = (d.arv_source as ArvSource) || "initial";
+        const base: Deal = {
+          id: d.id,
+          createdAt: d.created_at,
+          updatedAt: d.updated_at,
+          subjectSqft: d.subject_sqft || 0,
+          subjectBedrooms: d.subject_bedrooms != null ? Number(d.subject_bedrooms) : 0,
+          subjectBathrooms: d.subject_bathrooms != null ? Number(d.subject_bathrooms) : 0,
+          lenderInfo: d.lender_info || BLANK_LENDER_INFO,
+          inputs: {
+            propertyAddress: d.property_address || "",
+            purchasePrice: d.purchase_price || 0,
+            rehabInitialEstimate: rawRehab,
+            rehabManualOverride: d.rehab_manual_override != null ? Number(d.rehab_manual_override) : 0,
+            rehabCostSource: ["initial", "ai_walkthrough", "manual"].includes(rcs) ? rcs : "initial",
+            rehabCost: d.rehab_cost != null ? Number(d.rehab_cost) : 0,
+            arvInitialEstimate: rawArv,
+            arvSource: ["initial", "comp_derived"].includes(arvS) ? arvS : "initial",
+            arv: d.arv != null ? Number(d.arv) : 0,
+            loanAmount: d.loan_amount || 0,
+            interestRate: d.interest_rate || 11.5,
+            loanTermMonths: d.loan_term_months || 12,
+            holdingMonths: d.holding_months || 6,
+            closingCostsBuy: d.closing_costs_buy || 0,
+            closingCostsSell: d.closing_costs_sell || 0,
+            monthlyRent: d.monthly_rent || 0,
+            monthlyExpenses: d.monthly_expenses || 0,
+            notes: d.notes || "",
+            dealStatus: d.deal_status || "prospect",
+          },
+          comps: (compsData || []).filter((c: any) => c.deal_id === d.id).map((c: any) => ({
+            id: c.id, address: c.address || "", salePrice: c.sale_price || 0,
+            sqft: c.sqft || 0, bedBath: c.bed_bath || "", daysOnMarket: c.days_on_market || 0,
+            soldDate: c.sold_date || "", strength: c.strength || "average", notes: c.notes || "",
+          })),
+          scopeItems: (scopeData || []).filter((s: any) => s.deal_id === d.id).map((s: any) => ({
+            id: s.id, category: s.category || "Other", description: s.description || "",
+            quantity: s.quantity || 1, unit: s.unit || "lot", myEstimate: s.my_estimate || 0,
+            notes: s.notes || "", priority: s.priority || "important",
+          })),
+          rentalComps: (rentalCompsData || []).filter((r: any) => r.deal_id === d.id).map((r: any) => ({
+            id: r.id,
+            address: r.address || "",
+            monthlyRent: Number(r.monthly_rent) || 0,
+            bedBath: r.bed_bath || "",
+            distance: r.distance || "",
+          })),
+          aiAnalysisUsed: d.ai_analysis_used === true,
+        };
+        return applySyncedRehabArv(base);
+      });
 
       setDeals(assembled);
       if (assembled.length > 0) setActiveDealId(assembled[0].id);
@@ -1713,8 +1785,13 @@ export default function App() {
       ai_analysis_used: true,
       property_address: DEMO_INPUTS.propertyAddress,
       purchase_price: DEMO_INPUTS.purchasePrice,
+      rehab_initial_estimate: DEMO_INPUTS.rehabInitialEstimate,
+      rehab_manual_override: 0,
       rehab_cost: DEMO_INPUTS.rehabCost,
+      rehab_cost_source: "initial",
+      arv_initial_estimate: DEMO_INPUTS.arvInitialEstimate,
       arv: DEMO_INPUTS.arv,
+      arv_source: "initial",
       loan_amount: DEMO_INPUTS.loanAmount,
       interest_rate: DEMO_INPUTS.interestRate,
       loan_term_months: DEMO_INPUTS.loanTermMonths,
@@ -1726,6 +1803,8 @@ export default function App() {
       notes: DEMO_INPUTS.notes,
       deal_status: DEMO_INPUTS.dealStatus,
       subject_sqft: 1480,
+      subject_bedrooms: 3,
+      subject_bathrooms: 2,
       lender_info: { investorName: "", investorCompany: "", investorPhone: "", investorEmail: "", lenderName: "" },
     }).select().single();
 
@@ -1748,7 +1827,12 @@ export default function App() {
         ai_analysis_used: deal.aiAnalysisUsed === true,
         property_address: deal.inputs.propertyAddress,
         purchase_price: deal.inputs.purchasePrice,
+        rehab_initial_estimate: deal.inputs.rehabInitialEstimate,
+        rehab_manual_override: deal.inputs.rehabManualOverride,
+        rehab_cost_source: deal.inputs.rehabCostSource,
         rehab_cost: deal.inputs.rehabCost,
+        arv_initial_estimate: deal.inputs.arvInitialEstimate,
+        arv_source: deal.inputs.arvSource,
         arv: deal.inputs.arv,
         loan_amount: deal.inputs.loanAmount,
         interest_rate: deal.inputs.interestRate,
@@ -1761,6 +1845,8 @@ export default function App() {
         notes: deal.inputs.notes,
         deal_status: deal.inputs.dealStatus,
         subject_sqft: deal.subjectSqft,
+        subject_bedrooms: deal.subjectBedrooms,
+        subject_bathrooms: deal.subjectBathrooms,
         lender_info: deal.lenderInfo,
       });
 
@@ -1828,11 +1914,14 @@ export default function App() {
   const updateDeal = (changes: Partial<Deal>) => {
     setDeals((prev) => prev.map((d) => {
       if (d.id !== activeDealId) return d;
-      const updated = { ...d, updatedAt: new Date().toISOString(), ...changes };
-      // Debounced save
+      const updated: Deal = { ...d, updatedAt: new Date().toISOString(), ...changes };
+      if (changes.inputs !== undefined) {
+        updated.inputs = { ...d.inputs, ...changes.inputs };
+      }
+      const out = applySyncedRehabArv(updated);
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => saveDeal(updated), 1500);
-      return updated;
+      saveTimer.current = setTimeout(() => saveDeal(out), 1500);
+      return out;
     }));
   };
 
@@ -1849,13 +1938,21 @@ export default function App() {
     const { data, error } = await supabase.from("deals").insert({
       user_id: user.id,
       ai_analysis_used: false,
-      property_address: "", purchase_price: 0, rehab_cost: 0, arv: 0, loan_amount: 0,
+      property_address: "", purchase_price: 0,
+      rehab_initial_estimate: 0, rehab_manual_override: 0, rehab_cost: 0, rehab_cost_source: "initial",
+      arv_initial_estimate: 0, arv: 0, arv_source: "initial",
+      loan_amount: 0,
       interest_rate: 11.5, loan_term_months: 12, holding_months: 6,
       closing_costs_buy: 0, closing_costs_sell: 0, monthly_rent: 0, monthly_expenses: 0,
-      notes: "", deal_status: "prospect", subject_sqft: 0, lender_info: BLANK_LENDER_INFO,
+      notes: "", deal_status: "prospect", subject_sqft: 0, subject_bedrooms: 0, subject_bathrooms: 0, lender_info: BLANK_LENDER_INFO,
     }).select().single();
     if (error || !data) return;
-    const nd: Deal = { id: data.id, createdAt: data.created_at, updatedAt: data.updated_at, inputs: { ...BLANK_INPUTS }, comps: [], subjectSqft: 0, lenderInfo: { ...BLANK_LENDER_INFO }, scopeItems: [], rentalComps: [], aiAnalysisUsed: false };
+    const nd: Deal = applySyncedRehabArv({
+      id: data.id, createdAt: data.created_at, updatedAt: data.updated_at,
+      inputs: { ...BLANK_INPUTS },
+      comps: [], subjectSqft: 0, subjectBedrooms: 0, subjectBathrooms: 0,
+      lenderInfo: { ...BLANK_LENDER_INFO }, scopeItems: [], rentalComps: [], aiAnalysisUsed: false,
+    });
     setDeals((prev) => [nd, ...prev]);
     setActiveDealId(nd.id);
     setActiveTab("deal");
@@ -1876,7 +1973,18 @@ export default function App() {
 
   const handleAddAIToScope = (items: ScopeItem[]) => {
     if (!activeDeal) return;
-    updateDeal({ scopeItems: [...activeDeal.scopeItems, ...items] });
+    const wasEmpty = activeDeal.scopeItems.length === 0;
+    const nextScope = [...activeDeal.scopeItems, ...items];
+    if (wasEmpty && items.length > 0 && activeDeal.inputs.rehabCostSource === "initial") {
+      updateDeal({
+        scopeItems: nextScope,
+        inputs: { ...activeDeal.inputs, rehabCostSource: "ai_walkthrough" },
+      });
+      const sum = calculateAIWalkthroughRehab(nextScope);
+      setActivityToast({ text: `AI scope detected. Using ${fmt(sum)} for rehab calculations. Change anytime on Deal Analysis.`, ms: 6000 });
+    } else {
+      updateDeal({ scopeItems: nextScope });
+    }
     setActiveTab("scope");
   };
 
@@ -1999,13 +2107,99 @@ export default function App() {
         {/* Content */}
         <div style={{ padding: isMobile ? "16px 14px 24px" : "20px 24px", flex: 1, overflow: "auto" }}>
 
-          {activeTab === "deal" && (
+          {activeTab === "deal" && (() => {
+            const aiRehab = calculateAIWalkthroughRehab(activeDeal.scopeItems);
+            const { weightedArv: compArvW } = calculateCompARV(activeDeal.comps, activeDeal.subjectSqft);
+            const nComps = activeDeal.comps.filter((c) => c.salePrice > 0 && c.sqft > 0).length;
+            const activeRe = calculateActiveRehab(inputs, activeDeal.scopeItems);
+            const activeAr = calculateActiveARV(inputs, activeDeal.comps, activeDeal.subjectSqft);
+            const rehabBySource: Record<RehabCostSource, number> = {
+              initial: inputs.rehabInitialEstimate,
+              ai_walkthrough: aiRehab,
+              manual: inputs.rehabManualOverride,
+            };
+            const selectedRehabVal = rehabBySource[inputs.rehabCostSource];
+            const arvBySource: Record<ArvSource, number> = { initial: inputs.arvInitialEstimate, comp_derived: compArvW };
+            const selectedArvVal = arvBySource[inputs.arvSource];
+            return (
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 20 : 24 }}>
               <div>
                 <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Deal Inputs</div>
                 <InputField label="Purchase Price" value={inputs.purchasePrice} onChange={set("purchasePrice")} isMobile={isMobile} />
-                <InputField label="Rehab Cost" value={inputs.rehabCost} onChange={set("rehabCost")} isMobile={isMobile} />
-                <InputField label="After Repair Value (ARV)" value={inputs.arv} onChange={set("arv")} isMobile={isMobile} />
+
+                <div style={{ marginBottom: isMobile ? 18 : 16 }}>
+                  <div style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Property Specs</div>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: 10, color: "#64748b", marginBottom: 4, textTransform: "uppercase" }}>Bedrooms</label>
+                      <input type="number" min={0} value={activeDeal.subjectBedrooms || ""} onChange={(e) => updateDeal({ subjectBedrooms: Math.max(0, parseInt(e.target.value) || 0) })}
+                        style={{ width: "100%", minHeight: isMobile ? 44 : 36, background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: isMobile ? "12px" : "8px", fontFamily: "monospace" }} />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontSize: 10, color: "#64748b", marginBottom: 4, textTransform: "uppercase" }}>Bathrooms</label>
+                      <input type="number" min={0} step={0.5} value={activeDeal.subjectBathrooms || ""} onChange={(e) => updateDeal({ subjectBathrooms: Math.max(0, parseFloat(e.target.value) || 0) })}
+                        style={{ width: "100%", minHeight: isMobile ? 44 : 36, background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: isMobile ? "12px" : "8px", fontFamily: "monospace" }} />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontSize: 10, color: "#64748b", marginBottom: 4, textTransform: "uppercase" }}>Square Footage</label>
+                      <input type="number" min={0} value={activeDeal.subjectSqft || ""} onChange={(e) => updateDeal({ subjectSqft: Math.max(0, parseFloat(e.target.value) || 0) })}
+                        style={{ width: "100%", minHeight: isMobile ? 44 : 36, background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: isMobile ? "12px" : "8px", fontFamily: "monospace" }} />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: isMobile ? 18 : 16 }}>
+                  <div style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Rehab Cost Breakdown</div>
+                  {([["initial", "Initial Estimate"], ["ai_walkthrough", "AI Walkthrough"], ["manual", "Manual Override"]] as const).map(([k, label]) => (
+                    <div key={k} style={{ display: "grid", gridTemplateColumns: isMobile ? "32px 1fr" : "32px 1fr 200px", gap: 8, alignItems: "center", marginBottom: 10, padding: "8px 0", borderBottom: "1px solid #0f172a" }}>
+                      <input type="radio" name="rehabSource" checked={inputs.rehabCostSource === k} onChange={() => void updateInputs({ rehabCostSource: k })}
+                        style={{ width: 18, height: 18, accentColor: "#3b82f6" }} />
+                      <div style={{ fontSize: 13, color: "#e2e8f0" }}>{label}</div>
+                      {k === "initial" && (
+                        <div style={{ gridColumn: isMobile ? "1 / -1" : undefined, marginTop: isMobile ? 4 : 0, marginLeft: isMobile ? 32 : 0 }}>
+                          <InputField label="" value={inputs.rehabInitialEstimate} onChange={(v) => updateInputs({ rehabInitialEstimate: v })} prefix="$" isMobile={isMobile} hideLabel />
+                        </div>
+                      )}
+                      {k === "ai_walkthrough" && (
+                        <div style={{ fontSize: 13, color: activeDeal.scopeItems.length > 0 ? "#94a3b8" : "#64748b", gridColumn: isMobile ? "1 / -1" : 3, textAlign: isMobile ? "left" : "right" }}>
+                          {activeDeal.scopeItems.length > 0
+                            ? `${fmt(aiRehab)} (${activeDeal.scopeItems.length} scope items)`
+                            : "$0 — add scope items to enable"}
+                        </div>
+                      )}
+                      {k === "manual" && (
+                        <div style={{ gridColumn: isMobile ? "1 / -1" : undefined, marginTop: isMobile ? 4 : 0, marginLeft: isMobile ? 32 : 0 }}>
+                          <InputField label="" value={inputs.rehabManualOverride} onChange={(v) => updateInputs({ rehabManualOverride: v })} prefix="$" isMobile={isMobile} hideLabel />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "#f1f5f9", marginTop: 12, marginBottom: 6 }}>Active Rehab Cost: {fmt(activeRe)}</div>
+                  {selectedRehabVal === 0 && <div style={{ fontSize: 12, color: "#f59e0b" }}>⚠ Selected source has $0 value.</div>}
+                </div>
+
+                <div style={{ marginBottom: isMobile ? 18 : 16 }}>
+                  <div style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>ARV Breakdown</div>
+                  {([["initial", "Initial Estimate"], ["comp_derived", "Comp-Derived"]] as const).map(([k, label]) => (
+                    <div key={k} style={{ display: "grid", gridTemplateColumns: isMobile ? "32px 1fr" : "32px 1fr 200px", gap: 8, alignItems: "center", marginBottom: 10, padding: "8px 0", borderBottom: "1px solid #0f172a" }}>
+                      <input type="radio" name="arvSource" checked={inputs.arvSource === k} onChange={() => void updateInputs({ arvSource: k })} style={{ width: 18, height: 18, accentColor: "#3b82f6" }} />
+                      <div style={{ fontSize: 13, color: "#e2e8f0" }}>{label}</div>
+                      {k === "initial" && (
+                        <div style={{ gridColumn: isMobile ? "1 / -1" : undefined, marginTop: isMobile ? 4 : 0, marginLeft: isMobile ? 32 : 0 }}>
+                          <InputField label="" value={inputs.arvInitialEstimate} onChange={(v) => updateInputs({ arvInitialEstimate: v })} prefix="$" isMobile={isMobile} hideLabel />
+                        </div>
+                      )}
+                      {k === "comp_derived" && (
+                        <div style={{ fontSize: 13, color: nComps > 0 ? "#94a3b8" : "#64748b", gridColumn: isMobile ? "1 / -1" : 3, textAlign: isMobile ? "left" : "right" }}>
+                          {nComps > 0 ? `${fmt(compArvW)} (${nComps} comps)` : "$0 — add comps to enable"}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "#f1f5f9", marginTop: 12, marginBottom: 6 }}>Active ARV: {fmt(activeAr)}</div>
+                  {selectedArvVal === 0 && <div style={{ fontSize: 12, color: "#f59e0b" }}>⚠ Selected source has $0 value.</div>}
+                </div>
+
                 <InputField label="Loan Amount" value={inputs.loanAmount} onChange={set("loanAmount")} isMobile={isMobile} />
                 <InputField label="Interest Rate" value={inputs.interestRate} onChange={set("interestRate")} prefix="%" suffix="APR" isMobile={isMobile} />
                 <InputField label="Loan Term" value={inputs.loanTermMonths} onChange={set("loanTermMonths")} prefix="" suffix="mo" isMobile={isMobile} />
@@ -2045,7 +2239,8 @@ export default function App() {
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {activeTab === "ai" && (
             <AIWalkthroughTab
@@ -2077,23 +2272,33 @@ export default function App() {
                 await supabase.from("comps").delete().eq("id", id);
                 updateDeal({ comps: activeDeal.comps.filter((c) => c.id !== id) });
               }}
-              onUpdateSubjectSqft={(v) => updateDeal({ subjectSqft: v })}
-              onApplyArv={(v) => { updateInputs({ arv: v }); setActiveTab("deal"); }}
+              onUpdateSubjectSqft={() => {}}
+              onApplyArv={(_weightedArv) => { void _weightedArv; updateInputs({ arvSource: "comp_derived" }); setActiveTab("deal"); }}
               onRentCastSuccess={async (newComps, rentEstimate, rentalComps) => {
                 if (!activeDeal || !user) return;
+                const compsWereEmpty = activeDeal.comps.length === 0;
+                const arvWasInitial = activeDeal.inputs.arvSource === "initial";
                 const compsWithIds: Comp[] = newComps.map((c) => ({ ...c, id: uid() }));
                 const updatedComps = [...activeDeal.comps, ...compsWithIds];
-                const updatedInputs = rentEstimate > 0
-                  ? { ...activeDeal.inputs, monthlyRent: rentEstimate }
-                  : activeDeal.inputs;
-                const updatedDeal: Deal = {
+                let nextInputs: DealInputs = { ...activeDeal.inputs };
+                if (rentEstimate > 0) nextInputs = { ...nextInputs, monthlyRent: rentEstimate };
+                if (compsWereEmpty && updatedComps.length > 0 && arvWasInitial) {
+                  nextInputs = { ...nextInputs, arvSource: "comp_derived" };
+                }
+                let merged: Deal = {
                   ...activeDeal,
-                  inputs: updatedInputs,
+                  inputs: nextInputs,
                   comps: updatedComps,
                   updatedAt: new Date().toISOString(),
                 };
-                setDeals((prev) => prev.map((d) => d.id === activeDeal.id ? updatedDeal : d));
-
+                merged = applySyncedRehabArv(merged);
+                setDeals((prev) => prev.map((d) => d.id === activeDeal.id ? merged : d));
+                if (compsWereEmpty && updatedComps.length > 0 && arvWasInitial) {
+                  const w = calculateCompARV(updatedComps, activeDeal.subjectSqft).weightedArv;
+                  setActivityToast({ text: `Comps imported. Using ${fmt(w)} comp-derived ARV. Change anytime on Deal Analysis.`, ms: 6000 });
+                }
+                if (saveTimer.current) clearTimeout(saveTimer.current);
+                saveTimer.current = setTimeout(() => saveDeal(merged), 1500);
                 try {
                   if (compsWithIds.length > 0) {
                     const { error: compsError } = await supabase.from("comps").insert(
@@ -2135,7 +2340,10 @@ export default function App() {
                       }))
                     );
                     if (rentalError) console.error("Rental comps insert error:", rentalError);
-                    setDeals(prev => prev.map(d => d.id === activeDeal.id ? { ...d, rentalComps: rentalCompsWithIds } : d));
+                    const withRental = applySyncedRehabArv({ ...merged, rentalComps: rentalCompsWithIds });
+                    setDeals(prev => prev.map(d => d.id === activeDeal.id ? withRental : d));
+                    if (saveTimer.current) clearTimeout(saveTimer.current);
+                    saveTimer.current = setTimeout(() => saveDeal(withRental), 1500);
                   }
                 } catch (err) {
                   console.error("RentCast save error:", err);
