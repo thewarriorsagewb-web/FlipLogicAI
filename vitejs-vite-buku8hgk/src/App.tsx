@@ -37,6 +37,8 @@ interface DealInputs {
   monthlyExpenses: number;
   notes: string;
   dealStatus: "prospect" | "active" | "closed" | "passed";
+  /** Max allowable offer: percent of ARV used in MAO = (ARV × MAO%) − Rehab */
+  maoPercent: number;
 }
 
 interface Comp {
@@ -119,6 +121,7 @@ const BLANK_INPUTS: DealInputs = {
   interestRate: 11.5, loanTermMonths: 12, holdingMonths: 6,
   closingCostsBuy: 0, closingCostsSell: 0, monthlyRent: 0, monthlyExpenses: 0,
   notes: "", dealStatus: "prospect",
+  maoPercent: 70,
 };
 
 const BLANK_LENDER_INFO: LenderInfo = {
@@ -140,6 +143,7 @@ const DEMO_INPUTS: DealInputs = {
   closingCostsBuy: 3500, closingCostsSell: 13500, monthlyRent: 1800, monthlyExpenses: 400,
   notes: "Solid bones. Needs full kitchen/bath remodel. Roof is 4 years old — good shape.",
   dealStatus: "prospect",
+  maoPercent: 70,
 };
 
 const DEMO_COMPS: Comp[] = [
@@ -215,6 +219,15 @@ function calculateActiveARV(inputs: DealInputs, comps: Comp[], subjectSqft: numb
     return calculateCompARV(comps, subjectSqft).weightedArv;
   }
   return inputs.arvInitialEstimate;
+}
+
+/**
+ * Standard formula: MAO = (ARV × MAO%) − Rehab Cost
+ * Example: ARV $275,000, Rehab $45,000, MAO% 70 → MAO = ($275,000 × 0.70) − $45,000 = $147,500
+ */
+function calculateMAO(activeARV: number, activeRehab: number, maoPercent: number): number {
+  if (!activeARV || activeARV <= 0 || !maoPercent || maoPercent <= 0) return 0;
+  return Math.max(0, (activeARV * (maoPercent / 100)) - (activeRehab || 0));
 }
 
 function applySyncedRehabArv(d: Deal): Deal {
@@ -1825,6 +1838,9 @@ export default function App() {
             monthlyExpenses: d.monthly_expenses || 0,
             notes: d.notes || "",
             dealStatus: d.deal_status || "prospect",
+            maoPercent: d.mao_percent != null
+              ? Math.min(100, Math.max(1, Number(d.mao_percent)))
+              : 70,
           },
           comps: (compsData || []).filter((c: any) => c.deal_id === d.id).map((c: any) => ({
             id: c.id, address: c.address || "", salePrice: c.sale_price || 0,
@@ -1883,6 +1899,7 @@ export default function App() {
       monthly_expenses: DEMO_INPUTS.monthlyExpenses,
       notes: DEMO_INPUTS.notes,
       deal_status: DEMO_INPUTS.dealStatus,
+      mao_percent: 70,
       subject_sqft: 1480,
       subject_bedrooms: 3,
       subject_bathrooms: 2,
@@ -1925,6 +1942,7 @@ export default function App() {
         monthly_expenses: deal.inputs.monthlyExpenses,
         notes: deal.inputs.notes,
         deal_status: deal.inputs.dealStatus,
+        mao_percent: deal.inputs.maoPercent,
         subject_sqft: deal.subjectSqft,
         subject_bedrooms: deal.subjectBedrooms,
         subject_bathrooms: deal.subjectBathrooms,
@@ -2057,7 +2075,7 @@ export default function App() {
       loan_amount: 0,
       interest_rate: 11.5, loan_term_months: 12, holding_months: 6,
       closing_costs_buy: 0, closing_costs_sell: 0, monthly_rent: 0, monthly_expenses: 0,
-      notes: "", deal_status: "prospect", subject_sqft: 0, subject_bedrooms: 0, subject_bathrooms: 0, lender_info: BLANK_LENDER_INFO,
+      notes: "", deal_status: "prospect", mao_percent: 70, subject_sqft: 0, subject_bedrooms: 0, subject_bathrooms: 0, lender_info: BLANK_LENDER_INFO,
     }).select().single();
     if (error || !data) return;
     const nd: Deal = applySyncedRehabArv({
@@ -2234,14 +2252,15 @@ export default function App() {
             const selectedRehabVal = rehabBySource[inputs.rehabCostSource];
             const arvBySource: Record<ArvSource, number> = { initial: inputs.arvInitialEstimate, comp_derived: compArvW };
             const selectedArvVal = arvBySource[inputs.arvSource];
+            const mao = calculateMAO(activeAr, activeRe, inputs.maoPercent);
+            const sectionBox: CSSProperties = { background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12, padding: isMobile ? 16 : 20, marginBottom: 20 };
+            const sectionHeader: CSSProperties = { display: "flex", alignItems: "center", gap: 10, fontSize: isMobile ? 15 : 17, color: "#3b82f6", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16, fontWeight: 700, fontFamily: "'Syne', sans-serif" };
+            const purchase = inputs.purchasePrice;
             return (
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 20 : 24 }}>
               <div>
-                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Deal Inputs</div>
-                <InputField label="Purchase Price" value={inputs.purchasePrice} onChange={set("purchasePrice")} isMobile={isMobile} />
-
-                <div ref={propertySpecsRef} style={{ marginBottom: isMobile ? 18 : 16 }}>
-                  <div style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Property Specs</div>
+                <div ref={propertySpecsRef} style={sectionBox}>
+                  <div style={sectionHeader}><span aria-hidden>🏠</span> Property Specs</div>
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
                     <div>
                       <label style={{ display: "block", fontSize: 10, color: "#64748b", marginBottom: 4, textTransform: "uppercase" }}>Bedrooms</label>
@@ -2261,8 +2280,14 @@ export default function App() {
                   </div>
                 </div>
 
-                <div style={{ marginBottom: isMobile ? 18 : 16 }}>
-                  <div style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Rehab Cost Breakdown</div>
+                <div style={sectionBox}>
+                  <div style={sectionHeader}><span aria-hidden>💰</span> Acquisition</div>
+                  <InputField label="Purchase Price" value={inputs.purchasePrice} onChange={set("purchasePrice")} isMobile={isMobile} />
+                  <InputField label="Closing Costs (Buy)" value={inputs.closingCostsBuy} onChange={set("closingCostsBuy")} isMobile={isMobile} />
+                </div>
+
+                <div style={sectionBox}>
+                  <div style={sectionHeader}><span aria-hidden>🔨</span> Rehab Cost Breakdown</div>
                   {([["initial", "Initial Estimate"], ["ai_walkthrough", "AI Walkthrough"], ["manual", "Manual Override"]] as const).map(([k, label]) => (
                     <div key={k} style={{ display: "grid", gridTemplateColumns: isMobile ? "32px 1fr" : "32px 1fr 200px", gap: 8, alignItems: "center", marginBottom: 10, padding: "8px 0", borderBottom: "1px solid #0f172a" }}>
                       <input type="radio" name="rehabSource" checked={inputs.rehabCostSource === k} onChange={() => void updateInputs({ rehabCostSource: k })}
@@ -2291,8 +2316,8 @@ export default function App() {
                   {selectedRehabVal === 0 && <div style={{ fontSize: 12, color: "#f59e0b" }}>⚠ Selected source has $0 value.</div>}
                 </div>
 
-                <div style={{ marginBottom: isMobile ? 18 : 16 }}>
-                  <div style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>ARV Breakdown</div>
+                <div style={sectionBox}>
+                  <div style={sectionHeader}><span aria-hidden>📈</span> After Repair Value</div>
                   {([["initial", "Initial Estimate"], ["comp_derived", "Comp-Derived"]] as const).map(([k, label]) => (
                     <div key={k} style={{ display: "grid", gridTemplateColumns: isMobile ? "32px 1fr" : "32px 1fr 200px", gap: 8, alignItems: "center", marginBottom: 10, padding: "8px 0", borderBottom: "1px solid #0f172a" }}>
                       <input type="radio" name="arvSource" checked={inputs.arvSource === k} onChange={() => void updateInputs({ arvSource: k })} style={{ width: 18, height: 18, accentColor: "#3b82f6" }} />
@@ -2313,14 +2338,38 @@ export default function App() {
                   {selectedArvVal === 0 && <div style={{ fontSize: 12, color: "#f59e0b" }}>⚠ Selected source has $0 value.</div>}
                 </div>
 
-                <InputField label="Loan Amount" value={inputs.loanAmount} onChange={set("loanAmount")} isMobile={isMobile} />
-                <InputField label="Interest Rate" value={inputs.interestRate} onChange={set("interestRate")} prefix="%" suffix="APR" isMobile={isMobile} />
-                <InputField label="Loan Term" value={inputs.loanTermMonths} onChange={set("loanTermMonths")} prefix="" suffix="mo" isMobile={isMobile} />
-                <InputField label="Projected Hold Time" value={inputs.holdingMonths} onChange={set("holdingMonths")} prefix="" suffix="mo" isMobile={isMobile} />
-                <InputField label="Closing Costs (Buy)" value={inputs.closingCostsBuy} onChange={set("closingCostsBuy")} isMobile={isMobile} />
-                <InputField label="Closing Costs (Sell)" value={inputs.closingCostsSell} onChange={set("closingCostsSell")} isMobile={isMobile} />
-                <div style={{ marginTop: 4 }}>
-                  <label style={{ display: "block", fontSize: isMobile ? 12 : 11, color: "#94a3b8", marginBottom: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>Field Notes</label>
+                <div style={sectionBox}>
+                  <div style={sectionHeader}><span aria-hidden>🎯</span> Maximum Allowable Offer</div>
+                  <InputField
+                    label="MAO Percentage"
+                    value={inputs.maoPercent}
+                    onChange={(v) => { const n = Math.round(v || 0); void updateInputs({ maoPercent: Math.min(100, Math.max(1, n)) }); }}
+                    prefix=""
+                    suffix="%"
+                    isMobile={isMobile}
+                  />
+                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 2, marginBottom: 12 }}>MAO = (ARV × MAO%) − Rehab Cost</div>
+                  <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 800, color: "#f1f5f9", fontFamily: "'JetBrains Mono', monospace", marginBottom: 10 }}>Maximum Offer: {fmt(mao)}</div>
+                  {purchase === 0 ? (
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Enter purchase price in Acquisition to compare</div>
+                  ) : purchase <= mao ? (
+                    <div style={{ fontSize: 13, color: "#22c55e", fontWeight: 600 }}>You&apos;re {fmt(mao - purchase)} under MAO ✓</div>
+                  ) : (
+                    <div style={{ fontSize: 13, color: "#f87171", fontWeight: 600 }}>⚠ You&apos;re {fmt(purchase - mao)} over MAO</div>
+                  )}
+                </div>
+
+                <div style={sectionBox}>
+                  <div style={sectionHeader}><span aria-hidden>🏦</span> Financing</div>
+                  <InputField label="Loan Amount" value={inputs.loanAmount} onChange={set("loanAmount")} isMobile={isMobile} />
+                  <InputField label="Interest Rate" value={inputs.interestRate} onChange={set("interestRate")} prefix="%" suffix="APR" isMobile={isMobile} />
+                  <InputField label="Loan Term" value={inputs.loanTermMonths} onChange={set("loanTermMonths")} prefix="" suffix="mo" isMobile={isMobile} />
+                  <InputField label="Projected Hold Time" value={inputs.holdingMonths} onChange={set("holdingMonths")} prefix="" suffix="mo" isMobile={isMobile} />
+                  <InputField label="Closing Costs (Sell)" value={inputs.closingCostsSell} onChange={set("closingCostsSell")} isMobile={isMobile} />
+                </div>
+
+                <div style={sectionBox}>
+                  <div style={sectionHeader}><span aria-hidden>📝</span> Field Notes</div>
                   <textarea value={inputs.notes} onChange={(e) => set("notes")(e.target.value)} placeholder="Walkthrough observations, red flags, contractor notes..." rows={isMobile ? 5 : 4}
                     style={{ width: "100%", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#94a3b8", padding: isMobile ? "14px 12px" : "10px", fontSize: isMobile ? 15 : 13, fontFamily: "monospace", resize: "vertical", outline: "none", boxSizing: "border-box", minHeight: isMobile ? 120 : undefined }} />
                 </div>
