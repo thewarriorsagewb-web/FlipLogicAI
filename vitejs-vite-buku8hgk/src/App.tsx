@@ -163,6 +163,25 @@ const DEMO_SCOPE: ScopeItem[] = [
 /** Pre-seeded demo deal — excluded from trial usage counting */
 const DEMO_DEAL_ID = "27695e3f-a022-4c13-8f8e-6d290ba5b9d4";
 
+/** Persisted when user selects a deal — restored on full page load (e.g. Android background resume / reload) */
+const SELECTED_DEAL_STORAGE_KEY = "fliplogic_selected_deal_id";
+
+function readSelectedDealIdFromStorage(): string | null {
+  try {
+    return localStorage.getItem(SELECTED_DEAL_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Prefer saved id if that deal is still in the list; else first (most recent) deal */
+function pickActiveDealIdOnLoad(assembled: Deal[]): string | null {
+  if (assembled.length === 0) return null;
+  const saved = readSelectedDealIdFromStorage();
+  if (saved && assembled.some((d) => d.id === saved)) return saved;
+  return assembled[0].id;
+}
+
 // ─── Financial Engine ─────────────────────────────────────────────────────────
 function calculateMetrics(inputs: DealInputs): DealMetrics {
   const { purchasePrice, rehabCost, arv, loanAmount, interestRate, loanTermMonths, holdingMonths, closingCostsBuy, closingCostsSell, monthlyRent, monthlyExpenses } = inputs;
@@ -1758,6 +1777,21 @@ export default function App() {
     setAiPropertyChangeBanner(null);
   }, [activeDealId]);
 
+  /** Keep selected deal id in localStorage (same window.origin pattern as other fliplogic_* keys) */
+  useEffect(() => {
+    if (!user) return;
+    if (dbLoading) return;
+    try {
+      if (activeDealId) {
+        localStorage.setItem(SELECTED_DEAL_STORAGE_KEY, activeDealId);
+      } else if (deals.length === 0) {
+        localStorage.removeItem(SELECTED_DEAL_STORAGE_KEY);
+      }
+    } catch {
+      /* private mode, quota, etc. */
+    }
+  }, [user, activeDealId, dbLoading, deals.length]);
+
   // ─── Auth listener ────────────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -1865,7 +1899,8 @@ export default function App() {
       });
 
       setDeals(assembled);
-      if (assembled.length > 0) setActiveDealId(assembled[0].id);
+      const nextActive = pickActiveDealIdOnLoad(assembled);
+      if (nextActive) setActiveDealId(nextActive);
       const hasSeenOnboarding = localStorage.getItem("fliplogic_onboarding_complete");
       if (!hasSeenOnboarding) {
         setShowOnboarding(true);
@@ -2098,6 +2133,11 @@ export default function App() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+    try {
+      localStorage.removeItem(SELECTED_DEAL_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
     setDeals([]);
     setActiveDealId("");
   };
