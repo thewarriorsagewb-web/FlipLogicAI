@@ -73,6 +73,7 @@ export function WalkthroughMediaRecorder({
   canUseAI,
   triggerAIUse,
   onNeedPaywall,
+  onBeforeAnalyze,
 }: {
   mode: RecMode;
   address: string;
@@ -90,6 +91,8 @@ export function WalkthroughMediaRecorder({
   canUseAI: (deal: AIGateDeal) => boolean;
   triggerAIUse: (id: string) => Promise<void>;
   onNeedPaywall: (reason: string) => void;
+  /** e.g. require Year Built; returns effective buildYear for this request (0 = not provided) */
+  onBeforeAnalyze?: () => Promise<{ buildYear: number }>;
 }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [phase, setPhase] = useState<RecPhase>("idle");
@@ -470,6 +473,11 @@ export function WalkthroughMediaRecorder({
       onNeedPaywall("AI Walkthrough requires Investor plan or a free trial analysis");
       return;
     }
+    let runBuildYear = buildYear;
+    if (onBeforeAnalyze) {
+      const g = await onBeforeAnalyze();
+      runBuildYear = g.buildYear;
+    }
     try {
       const blob = stoppedBlobRef.current;
       if (mode === "audio") {
@@ -479,7 +487,7 @@ export function WalkthroughMediaRecorder({
         await runAnalyze({
           mode: "audio",
           propertyAddress: address,
-          buildYear,
+          buildYear: runBuildYear,
           mimeType: blob.type || pickAudioMime(),
           audioBase64,
           flagTimestamps: flags.map((f) => f.atSec),
@@ -494,7 +502,7 @@ export function WalkthroughMediaRecorder({
         await runAnalyze({
           mode: "video",
           propertyAddress: address,
-          buildYear,
+          buildYear: runBuildYear,
           framesBase64: framesRef.current,
           videoBase64,
           mimeType: blob.type || pickVideoMime(),
@@ -509,7 +517,7 @@ export function WalkthroughMediaRecorder({
       await runAnalyze({
         mode: "audiovideo",
         propertyAddress: address,
-        buildYear,
+        buildYear: runBuildYear,
         audioBase64,
         mimeType: blob.type || pickAudioMime(),
         videoBursts: [...avBurstsRef.current],

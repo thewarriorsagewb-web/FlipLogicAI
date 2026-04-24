@@ -79,6 +79,8 @@ interface Deal {
   inputs: DealInputs; comps: Comp[]; subjectSqft: number;
   subjectBedrooms: number;
   subjectBathrooms: number;
+  /** Construction year (AI walkthrough); null = not set — do not default (avoids false lead-paint heuristics) */
+  yearBuilt: number | null;
   lenderInfo: LenderInfo; scopeItems: ScopeItem[];
   rentalComps: RentalComp[];
   /** First successful AI walkthrough or RentCast on this deal counts toward trial */
@@ -445,9 +447,9 @@ function ScenarioRow({ scenario, inputs, isMobile = false }: { scenario: Scenari
 }
 
 // ─── AI WALKTHROUGH TAB ───────────────────────────────────────────────────────
-function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, dealId, userId, currentDeal, canUseAI, triggerAIUse, onNeedPaywall,
+function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile = false, dealId, userId, currentDeal, canUseAI, triggerAIUse, onNeedPaywall,
   propertyChangeBanner, onPropertyChangeFromAnalysis, onAcceptPropertyChangeBanner, onDismissPropertyChangeBanner, onModifyPropertySpecsManually }: {
-  address: string; buildYear: number; onAddToScope: (items: ScopeItem[]) => void; isMobile?: boolean;
+  address: string; onUpdateYearBuilt: (y: number | null) => void; onAddToScope: (items: ScopeItem[]) => void; isMobile?: boolean;
   dealId: string; userId: string;
   currentDeal: Deal;
   canUseAI: (deal: AIGateDeal) => boolean;
@@ -471,8 +473,55 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [selectedFindings, setSelectedFindings] = useState<Set<number>>(new Set());
-  const [buildYearInput, setBuildYearInput] = useState(buildYear || 1970);
+  const [localBuildYear, setLocalBuildYear] = useState("");
+  const [showYearGate, setShowYearGate] = useState(false);
+  const [yearGateInput, setYearGateInput] = useState("");
+  const [yearGateError, setYearGateError] = useState("");
+  const yearGateResolveRef = useRef<((r: { buildYear: number }) => void) | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const yb = currentDeal.yearBuilt;
+    setLocalBuildYear(yb != null && yb > 0 ? String(yb) : "");
+  }, [dealId, currentDeal.yearBuilt]);
+
+  useEffect(() => {
+    setShowYearGate(false);
+    yearGateResolveRef.current = null;
+  }, [dealId]);
+
+  const waitForYearGate = useCallback((): Promise<{ buildYear: number }> => {
+    const yb = currentDeal.yearBuilt;
+    if (yb != null && yb > 0) return Promise.resolve({ buildYear: yb });
+    return new Promise((resolve) => {
+      setYearGateInput("");
+      setYearGateError("");
+      yearGateResolveRef.current = resolve;
+      setShowYearGate(true);
+    });
+  }, [currentDeal.yearBuilt]);
+
+  const resolveYearGate = (r: { buildYear: number }) => {
+    setShowYearGate(false);
+    const fn = yearGateResolveRef.current;
+    yearGateResolveRef.current = null;
+    fn?.(r);
+  };
+
+  const onYearGateContinue = () => {
+    const t = yearGateInput.trim();
+    const n = parseInt(t, 10);
+    if (!Number.isFinite(n) || n < 1800 || n > 2200) {
+      setYearGateError("Enter a valid year (1800–2200).");
+      return;
+    }
+    onUpdateYearBuilt(n);
+    resolveYearGate({ buildYear: n });
+  };
+
+  const onYearGateSkip = () => {
+    resolveYearGate({ buildYear: 0 });
+  };
 
   useEffect(() => {
     const iv = window.setInterval(() => setPendingJobs(loadPendingJobs()), 2000);
@@ -523,10 +572,13 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
       onNeedPaywall("AI Walkthrough requires Investor plan or a free trial analysis");
       return;
     }
+    const { buildYear: apiBy } = await waitForYearGate();
     setSyncingJobId(job.id);
     setError("");
     try {
-      const { data, error: fnErr } = await supabase.functions.invoke("analyze-walkthrough", { body: job.payload });
+      const { data, error: fnErr } = await supabase.functions.invoke("analyze-walkthrough", {
+        body: { ...job.payload, buildYear: apiBy },
+      });
       if (fnErr) throw new Error(fnErr.message || String(fnErr));
       const res = data as AnalyzeWalkthroughResponse;
       const parsed = res.findings;
@@ -566,6 +618,7 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
       onNeedPaywall("AI Walkthrough requires Investor plan or a free trial analysis");
       return;
     }
+    const { buildYear: apiBy } = await waitForYearGate();
     setAnalyzing(true);
     setError("");
     setFindings([]);
@@ -576,7 +629,7 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
       const payload = {
         mode: "photos",
         propertyAddress: address,
-        buildYear: buildYearInput,
+        buildYear: apiBy,
         videoFrames: b64,
         framesBase64: b64,
         flagTimestamps: [] as number[],
@@ -733,12 +786,39 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
           <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: 16, marginBottom: 16, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: isMobile ? 14 : 14 }}>
             <div>
               <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Property Build Year</div>
-              <div style={{ display: "flex", alignItems: "center", background: "#060b14", border: `1px solid ${buildYearInput < 1978 ? "#d97706" : "#1e293b"}`, borderRadius: 6, overflow: "hidden", width: isMobile ? "100%" : 120, minHeight: isMobile ? 44 : undefined }}>
-                <input type="number" value={buildYearInput} onChange={(e) => setBuildYearInput(parseInt(e.target.value) || 1970)}
-                  style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: isMobile ? "12px 14px" : "8px 10px", fontSize: isMobile ? 16 : 14, fontFamily: "monospace" }} />
+              <div style={{ display: "flex", alignItems: "center", background: "#060b14", border: `1px solid ${(currentDeal.yearBuilt != null && currentDeal.yearBuilt > 0 && currentDeal.yearBuilt < 1978) ? "#d97706" : "#1e293b"}`, borderRadius: 6, overflow: "hidden", width: isMobile ? "100%" : 120, minHeight: isMobile ? 44 : undefined }}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="—"
+                  value={localBuildYear}
+                  onChange={(e) => {
+                    const t = e.target.value;
+                    if (t === "") { setLocalBuildYear(""); onUpdateYearBuilt(null); return; }
+                    if (!/^\d{1,4}$/.test(t)) return;
+                    setLocalBuildYear(t);
+                    if (t.length === 4) {
+                      const n = parseInt(t, 10);
+                      if (n >= 1500 && n <= 2500) onUpdateYearBuilt(n);
+                    }
+                  }}
+                  onBlur={() => {
+                    const t = localBuildYear.trim();
+                    if (t === "") { onUpdateYearBuilt(null); return; }
+                    const n = parseInt(t, 10);
+                    if (Number.isFinite(n) && n >= 1500 && n <= 2500) {
+                      onUpdateYearBuilt(n);
+                      setLocalBuildYear(String(n));
+                    } else {
+                      setLocalBuildYear(currentDeal.yearBuilt != null && currentDeal.yearBuilt > 0 ? String(currentDeal.yearBuilt) : "");
+                    }
+                  }}
+                  style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: isMobile ? "12px 14px" : "8px 10px", fontSize: isMobile ? 16 : 14, fontFamily: "monospace" }}
+                />
               </div>
             </div>
-            {buildYearInput < 1978 && <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 6, padding: "10px 14px", fontSize: isMobile ? 12 : 11, color: "#f59e0b", lineHeight: 1.45 }}>⚠ Pre-1978 build — AI will flag lead paint risk automatically</div>}
+            {currentDeal.yearBuilt != null && currentDeal.yearBuilt > 0 && currentDeal.yearBuilt < 1978 && <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 6, padding: "10px 14px", fontSize: isMobile ? 12 : 11, color: "#f59e0b", lineHeight: 1.45 }}>⚠ Pre-1978 build — AI will flag lead paint risk automatically</div>}
           </div>
 
           {walkMode === "photos" && (
@@ -785,7 +865,7 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
                 key={walkMode}
                 mode={walkMode as "audio" | "video" | "audiovideo"}
                 address={address}
-                buildYear={buildYearInput}
+                buildYear={currentDeal.yearBuilt != null && currentDeal.yearBuilt > 0 ? currentDeal.yearBuilt : 0}
                 isMobile={isMobile}
                 supabase={supabase}
                 triggerPhrase={triggerPhrase}
@@ -795,6 +875,7 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
                 canUseAI={canUseAI}
                 triggerAIUse={triggerAIUse}
                 onNeedPaywall={onNeedPaywall}
+                onBeforeAnalyze={waitForYearGate}
                 onFindings={(f) => {
                   setFindings(f);
                   setSelectedFindings(new Set(f.map((_, i) => i)));
@@ -938,6 +1019,110 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
           )}
         </div>
       </div>
+
+      {showYearGate && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1999,
+            background: "rgba(0,0,0,0.88)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            boxSizing: "border-box",
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="year-gate-title"
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "#0f172a",
+              border: "1px solid #1e293b",
+              borderRadius: 12,
+              padding: 24,
+              boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div id="year-gate-title" style={{ fontSize: 15, fontWeight: 800, color: "#e2e8f0", marginBottom: 10, fontFamily: "'Syne', sans-serif" }}>Enter Year Built before analyzing</div>
+            <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.55, margin: "0 0 14px 0" }}>
+              This helps detect lead paint (pre-1978), asbestos (pre-1980), and informs age-appropriate cost estimates.
+            </p>
+            <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Year Built</div>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={yearGateInput}
+              onChange={(e) => {
+                setYearGateInput(e.target.value);
+                setYearGateError("");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onYearGateContinue();
+              }}
+              placeholder="e.g. 1995"
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                minHeight: 44,
+                background: "#060b14",
+                border: "1px solid #1e293b",
+                borderRadius: 8,
+                color: "#f1f5f9",
+                padding: "10px 12px",
+                fontSize: 15,
+                fontFamily: "monospace",
+                marginBottom: 8,
+                outline: "none",
+              }}
+            />
+            {yearGateError ? <div style={{ color: "#f87171", fontSize: 12, marginBottom: 6 }}>{yearGateError}</div> : null}
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10, marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={onYearGateContinue}
+                style={{
+                  flex: 1,
+                  minHeight: 48,
+                  border: "none",
+                  borderRadius: 8,
+                  background: "linear-gradient(135deg, #1d4ed8, #1e40af)",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  fontFamily: "'Syne', sans-serif",
+                  cursor: "pointer",
+                }}
+              >
+                Continue
+              </button>
+              <button
+                type="button"
+                onClick={onYearGateSkip}
+                style={{
+                  flex: 1,
+                  minHeight: 48,
+                  border: "1px solid #334155",
+                  borderRadius: 8,
+                  background: "transparent",
+                  color: "#94a3b8",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  fontFamily: "'Syne', sans-serif",
+                  cursor: "pointer",
+                }}
+              >
+                Skip — I don&apos;t know the year
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1851,6 +2036,7 @@ export default function App() {
           subjectSqft: d.subject_sqft || 0,
           subjectBedrooms: d.subject_bedrooms != null ? Number(d.subject_bedrooms) : 0,
           subjectBathrooms: d.subject_bathrooms != null ? Number(d.subject_bathrooms) : 0,
+          yearBuilt: d.year_built != null && d.year_built !== "" && !Number.isNaN(Number(d.year_built)) ? Math.floor(Number(d.year_built)) : null,
           lenderInfo: d.lender_info || BLANK_LENDER_INFO,
           inputs: {
             propertyAddress: d.property_address || "",
@@ -1938,6 +2124,7 @@ export default function App() {
       subject_sqft: 1480,
       subject_bedrooms: 3,
       subject_bathrooms: 2,
+      year_built: null,
       lender_info: { investorName: "", investorCompany: "", investorPhone: "", investorEmail: "", lenderName: "" },
     }).select().single();
 
@@ -1981,6 +2168,7 @@ export default function App() {
         subject_sqft: deal.subjectSqft,
         subject_bedrooms: deal.subjectBedrooms,
         subject_bathrooms: deal.subjectBathrooms,
+        year_built: deal.yearBuilt,
         lender_info: deal.lenderInfo,
       });
 
@@ -2110,13 +2298,13 @@ export default function App() {
       loan_amount: 0,
       interest_rate: 11.5, loan_term_months: 12, holding_months: 6,
       closing_costs_buy: 0, closing_costs_sell: 0, monthly_rent: 0, monthly_expenses: 0,
-      notes: "", deal_status: "prospect", mao_percent: 70, subject_sqft: 0, subject_bedrooms: 0, subject_bathrooms: 0, lender_info: BLANK_LENDER_INFO,
+      notes: "", deal_status: "prospect", mao_percent: 70, subject_sqft: 0, subject_bedrooms: 0, subject_bathrooms: 0, year_built: null, lender_info: BLANK_LENDER_INFO,
     }).select().single();
     if (error || !data) return;
     const nd: Deal = applySyncedRehabArv({
       id: data.id, createdAt: data.created_at, updatedAt: data.updated_at,
       inputs: { ...BLANK_INPUTS },
-      comps: [], subjectSqft: 0, subjectBedrooms: 0, subjectBathrooms: 0,
+      comps: [], subjectSqft: 0, subjectBedrooms: 0, subjectBathrooms: 0, yearBuilt: null,
       lenderInfo: { ...BLANK_LENDER_INFO }, scopeItems: [], rentalComps: [], aiAnalysisUsed: false,
     });
     setDeals((prev) => [nd, ...prev]);
@@ -2447,7 +2635,7 @@ export default function App() {
           {activeTab === "ai" && (
             <AIWalkthroughTab
               address={inputs.propertyAddress}
-              buildYear={1970}
+              onUpdateYearBuilt={(y) => updateDeal({ yearBuilt: y })}
               onAddToScope={handleAddAIToScope}
               isMobile={isMobile}
               dealId={activeDeal.id}
