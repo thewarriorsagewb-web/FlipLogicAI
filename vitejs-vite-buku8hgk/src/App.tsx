@@ -688,32 +688,55 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
     { id: "audiovideo", label: "🎙️+🎥 Audio + Video" },
   ];
 
-  const howItWorksByMode: Record<WalkthroughCaptureMode, { icon: string; text: string }[]> = {
-    photos: [
-      { icon: "1️⃣", text: "Photos are analyzed securely via FlipLogic AI — no API key required" },
-      { icon: "2️⃣", text: "Upload up to 8 photos of the property — drag and drop or tap to select" },
-      { icon: "3️⃣", text: "Set the property build year above — pre-1978 homes automatically trigger lead paint warnings" },
-      { icon: "4️⃣", text: "Tap Analyze Photos — AI identifies every repair item visible in your photos and estimates costs" },
-    ],
-    audio: [
-      { icon: "1️⃣", text: "Set your trigger phrase above (default: 'flag this') — say it out loud during the walk to automatically flag important moments" },
-      { icon: "2️⃣", text: "Tap Record and walk the property. Speak naturally — describe everything you see out loud" },
-      { icon: "3️⃣", text: "Tap 🚩 Flag This or say your trigger phrase to mark moments that need attention" },
-      { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI transcribes your audio and generates a scope of work" },
-    ],
-    video: [
-      { icon: "1️⃣", text: "Set your trigger phrase above (default: 'flag this') — say it out loud during the walk to automatically flag important moments" },
-      { icon: "2️⃣", text: "Tap Record — uses your rear camera with frames captured every 3 seconds alongside your audio" },
-      { icon: "3️⃣", text: "Speak naturally and describe what you see. Tap 🚩 Flag This or say your trigger phrase to mark key moments" },
-      { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI analyzes both your audio transcript and video frames" },
-    ],
-    audiovideo: [
-      { icon: "1️⃣", text: "Set your trigger phrase above (default: 'flag this') — say it out loud during the walk to automatically flag important moments" },
-      { icon: "2️⃣", text: "Tap Record for continuous audio. Tap 🎥 Capture Video for 5-second video bursts at key moments" },
-      { icon: "3️⃣", text: "Speak naturally and describe what you see. Tap 🚩 Flag This or say your trigger phrase to mark key moments" },
-      { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI uses your full audio timeline plus video bursts" },
-    ],
-  };
+  const howItWorksPhotos: { icon: string; text: string }[] = [
+    { icon: "1️⃣", text: "Photos are analyzed securely via FlipLogic AI — no API key required" },
+    { icon: "2️⃣", text: "Upload up to 8 photos of the property — drag and drop or tap to select" },
+    { icon: "3️⃣", text: "Set the property build year above — pre-1978 homes automatically trigger lead paint warnings" },
+    { icon: "4️⃣", text: "Tap Analyze Photos — AI identifies every repair item visible in your photos and estimates costs" },
+  ];
+  const howItWorksByMode: Record<WalkthroughCaptureMode, { icon: string; text: string }[]> = isMobileDevice()
+    ? {
+        photos: howItWorksPhotos,
+        audio: [
+          { icon: "1️⃣", text: "Tap the 🚩 Flag button during recording to mark moments for review." },
+          { icon: "2️⃣", text: "Tap Record and walk the property. Speak naturally — describe everything you see out loud" },
+          { icon: "3️⃣", text: "Tap 🚩 Flag This to mark moments that need attention as you walk." },
+          { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI transcribes your audio and generates a scope of work" },
+        ],
+        video: [
+          { icon: "1️⃣", text: "Tap the 🚩 Flag button during recording to mark moments for review." },
+          { icon: "2️⃣", text: "Tap Record — uses your rear camera with frames captured every 3 seconds alongside your audio" },
+          { icon: "3️⃣", text: "Describe what you see. Tap 🚩 Flag This to mark key moments for review during your walk." },
+          { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI analyzes both your audio transcript and video frames" },
+        ],
+        audiovideo: [
+          { icon: "1️⃣", text: "Tap the 🚩 Flag button during recording to mark moments for review." },
+          { icon: "2️⃣", text: "Tap Record for continuous audio. Tap 🎥 Capture Video for 5-second video bursts at key moments" },
+          { icon: "3️⃣", text: "Describe what you see. Tap 🚩 Flag This to mark key moments for review during your walk." },
+          { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI uses your full audio timeline plus video bursts" },
+        ],
+      }
+    : {
+        photos: howItWorksPhotos,
+        audio: [
+          { icon: "1️⃣", text: "Set your trigger phrase above (default: 'flag this') — say it out loud during the walk to automatically flag important moments" },
+          { icon: "2️⃣", text: "Tap Record and walk the property. Speak naturally — describe everything you see out loud" },
+          { icon: "3️⃣", text: "Tap 🚩 Flag This or say your trigger phrase to mark moments that need attention" },
+          { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI transcribes your audio and generates a scope of work" },
+        ],
+        video: [
+          { icon: "1️⃣", text: "Set your trigger phrase above (default: 'flag this') — say it out loud during the walk to automatically flag important moments" },
+          { icon: "2️⃣", text: "Tap Record — uses your rear camera with frames captured every 3 seconds alongside your audio" },
+          { icon: "3️⃣", text: "Speak naturally and describe what you see. Tap 🚩 Flag This or say your trigger phrase to mark key moments" },
+          { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI analyzes both your audio transcript and video frames" },
+        ],
+        audiovideo: [
+          { icon: "1️⃣", text: "Set your trigger phrase above (default: 'flag this') — say it out loud during the walk to automatically flag important moments" },
+          { icon: "2️⃣", text: "Tap Record for continuous audio. Tap 🎥 Capture Video for 5-second video bursts at key moments" },
+          { icon: "3️⃣", text: "Speak naturally and describe what you see. Tap 🚩 Flag This or say your trigger phrase to mark key moments" },
+          { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI uses your full audio timeline plus video bursts" },
+        ],
+      };
 
   const tabBtnBase = {
     flex: isMobile ? "1 1 45%" : "1 1 0",
@@ -853,16 +876,19 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
 
           {walkMode !== "photos" && (
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Voice trigger phrase</div>
-              <input
-                type="text"
-                value={triggerPhrase}
-                onChange={(e) => saveTriggerPhrase(e.target.value)}
-                placeholder="flag this"
-                style={{ width: "100%", boxSizing: "border-box", minHeight: 48, background: "#060b14", border: "1px solid #1e293b", borderRadius: 8, color: "#f1f5f9", padding: "12px 14px", fontSize: 15, marginBottom: isMobileDevice() ? 6 : 14 }}
-              />
-              {isMobileDevice() && (
-                <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.45, marginBottom: 14 }}>Voice trigger is disabled on mobile. Use the 🚩 Flag This button during recording.</div>
+              {isMobileDevice() ? (
+                <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.45, marginBottom: 14 }}>🚩 Tap the Flag button to mark moments during recording. (Voice trigger is desktop-only.)</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Voice trigger phrase</div>
+                  <input
+                    type="text"
+                    value={triggerPhrase}
+                    onChange={(e) => saveTriggerPhrase(e.target.value)}
+                    placeholder="flag this"
+                    style={{ width: "100%", boxSizing: "border-box", minHeight: 48, background: "#060b14", border: "1px solid #1e293b", borderRadius: 8, color: "#f1f5f9", padding: "12px 14px", fontSize: 15, marginBottom: 14 }}
+                  />
+                </>
               )}
               <WalkthroughMediaRecorder
                 key={walkMode}
