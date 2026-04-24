@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type CSSProperties } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { AIFinding, WalkthroughFlag, PendingWalkthroughJob, VideoBurstMeta } from "./walkthroughTypes";
+import type { AIFinding, WalkthroughFlag, PendingWalkthroughJob, VideoBurstMeta, PropertyChanges, AnalyzeWalkthroughResponse } from "./walkthroughTypes";
+import { normalizePropertyChanges } from "./walkthroughTypes";
 
 export const WALKTHROUGH_PENDING_KEY = "fliplogic_walkthrough_pending";
 export const WALKTHROUGH_TRIGGER_KEY = "fliplogic_walkthrough_trigger_phrase";
@@ -64,6 +65,7 @@ export function WalkthroughMediaRecorder({
   supabase,
   triggerPhrase,
   onFindings,
+  onPropertyChanges,
   onAnalyzing,
   dealId,
   userId,
@@ -79,6 +81,8 @@ export function WalkthroughMediaRecorder({
   supabase: SupabaseClient;
   triggerPhrase: string;
   onFindings: (f: AIFinding[]) => void;
+  /** Net property spec deltas from walkthrough analysis (scope is separate) */
+  onPropertyChanges?: (p: PropertyChanges) => void;
   onAnalyzing: (b: boolean) => void;
   dealId: string;
   userId: string;
@@ -424,11 +428,14 @@ export function WalkthroughMediaRecorder({
           : error.message || String(error);
         throw new Error(detail);
       }
-      const findings = (data as { findings?: AIFinding[]; error?: string })?.findings;
-      const serverError = (data as { error?: string })?.error;
+      const res = data as AnalyzeWalkthroughResponse;
+      const findings = res.findings;
+      const serverError = res.error;
       if (serverError) throw new Error(serverError);
       if (!findings || !Array.isArray(findings)) throw new Error("Invalid response: " + JSON.stringify(data));
       onFindings(findings);
+      const pc = normalizePropertyChanges(res.propertyChanges);
+      onPropertyChanges?.(pc);
       try {
         await supabase.from("walkthrough_findings").insert({
           deal_id: dealId,

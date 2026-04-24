@@ -16,6 +16,58 @@ interface Finding {
   hazmat: boolean;
 }
 
+interface PropertyChanges {
+  bedroomDelta: number;
+  bathroomDelta: number;
+  sqftDelta: number;
+  reasoning: string;
+}
+
+const DEFAULT_PROPERTY_CHANGES: PropertyChanges = {
+  bedroomDelta: 0,
+  bathroomDelta: 0,
+  sqftDelta: 0,
+  reasoning: "",
+};
+
+function normalizePropertyChanges(raw: unknown): PropertyChanges {
+  if (!raw || typeof raw !== "object") return { ...DEFAULT_PROPERTY_CHANGES };
+  const o = raw as Record<string, unknown>;
+  const num = (v: unknown): number => {
+    if (typeof v === "number" && !Number.isNaN(v)) return v;
+    if (typeof v === "string") {
+      const n = parseFloat(v);
+      return Number.isNaN(n) ? 0 : n;
+    }
+    return 0;
+  };
+  return {
+    bedroomDelta: num(o.bedroomDelta),
+    bathroomDelta: num(o.bathroomDelta),
+    sqftDelta: num(o.sqftDelta),
+    reasoning: typeof o.reasoning === "string" ? o.reasoning : "",
+  };
+}
+
+function parseClaudeJson(cleaned: string): { findings: Finding[]; propertyChanges: PropertyChanges } {
+  const parsed: unknown = JSON.parse(cleaned);
+  if (Array.isArray(parsed)) {
+    return { findings: parsed as Finding[], propertyChanges: { ...DEFAULT_PROPERTY_CHANGES } };
+  }
+  if (parsed && typeof parsed === "object" && "findings" in parsed) {
+    const rec = parsed as { findings?: unknown; propertyChanges?: unknown };
+    const arr = rec.findings;
+    if (!Array.isArray(arr)) {
+      throw new Error("findings is not an array");
+    }
+    return {
+      findings: arr as Finding[],
+      propertyChanges: normalizePropertyChanges(rec.propertyChanges),
+    };
+  }
+  throw new Error("Response is not a valid array or object with findings");
+}
+
 async function transcribeAudio(audioBase64: string, mimeType: string, deepgramKey: string): Promise<string> {
   console.log("Transcribing audio with Deepgram...");
   const audioBuffer = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
@@ -121,19 +173,44 @@ ${videoBursts.length > 0 ? `${videoBursts.length} video burst frame(s) are also 
 
 Your job: Identify every repair, defect, safety issue, or renovation item based on the transcript and any images provided. Use the property location to inform your cost estimates — regional labor and material costs vary significantly across the US.
 
-If no transcript is provided and no images are attached, return an empty array.
+If no transcript is provided and no images are attached, return an object with "findings" as an empty array and "propertyChanges" with all zeros and empty reasoning.
 
-Return ONLY a valid JSON array. No markdown, no explanation, no code blocks. Just the raw JSON array:
-[
-  {
-    "category": "Foundation & Structure | Roof | Exterior | Windows & Doors | Plumbing | Electrical | HVAC | Insulation | Drywall & Paint | Flooring | Kitchen | Bathrooms | Landscaping | Permits & Fees | Cleanup & Hauling | Other",
-    "description": "clear description of the issue or work needed",
-    "priority": "critical | important | optional",
-    "estimatedCost": 0,
-    "notes": "specific observations or recommendations",
-    "hazmat": false
+Return ONLY a valid JSON object. No markdown, no explanation, no code blocks. Just the raw JSON.
+
+Schema (strict):
+{
+  "findings": [
+    {
+      "category": "Foundation & Structure | Roof | Exterior | Windows & Doors | Plumbing | Electrical | HVAC | Insulation | Drywall & Paint | Flooring | Kitchen | Bathrooms | Landscaping | Permits & Fees | Cleanup & Hauling | Other",
+      "description": "clear description of the issue or work needed",
+      "priority": "critical | important | optional",
+      "estimatedCost": 0,
+      "notes": "specific observations or recommendations",
+      "hazmat": false
+    }
+  ],
+  "propertyChanges": {
+    "bedroomDelta": 0,
+    "bathroomDelta": 0,
+    "sqftDelta": 0,
+    "reasoning": ""
   }
-]`;
+}
+
+PART A — findings: Same as before. Identify every repair, defect, safety issue, or renovation line item for scope/contractor estimates.
+
+PART B — propertyChanges (separate from findings): The investor's transcript may state PLANNED changes to the home's size or room count (not cosmetic remodels). Only fill non-zero deltas when the speaker clearly plans to:
+- add, remove, or convert bedrooms (e.g. convert garage to bedroom, bedroom to closet, add a bedroom, finish basement as bedroom);
+- add or remove full or half bathrooms (e.g. "add a half bath" → bathroomDelta 0.5, "add second full bath" → 1.0);
+- add or remove square footage (e.g. stated addition "400 sq ft", or a conversion where they give a size).
+
+Rules for propertyChanges:
+- bedroomDelta, bathroomDelta, sqftDelta = NET change vs today. Use positive for additions, negative for removals (e.g. convert bedroom to closet → -1 bedroom).
+- bathroomDelta may be half-increments (0.5) for a half bath.
+- sqftDelta: be CONSERVATIVE. Use a non-zero number ONLY if the investor explicitly states a square footage number (e.g. "400 sqft addition" → 400, "adding 200 square feet" → 200). If the investor mentions a conversion or addition WITHOUT stating a size (e.g. "converting the garage", "finishing the basement", "adding a bedroom"), set sqftDelta to 0 and note in reasoning that sqft impact should be verified manually. Never guess or infer sqft from vague descriptions. When in doubt, use 0.
+- If the transcript only describes normal remodels (kitchen, floors, paint, "update master bath" without adding/removing a bath) with NO change to bed/bath count or total sqft, leave ALL deltas 0 and reasoning "".
+- reasoning: only if at least one delta is non-zero — 1-2 short sentences: what in the transcript justified the change.
+- When in doubt, leave deltas at 0. False positives are worse than false negatives.`;
 
     // Collect all image frames
     const allFrames: string[] = [];
@@ -208,21 +285,32 @@ Return ONLY a valid JSON array. No markdown, no explanation, no code blocks. Jus
       .trim();
 
     let findings: Finding[] = [];
+    let propertyChanges: PropertyChanges = { ...DEFAULT_PROPERTY_CHANGES };
     try {
-      findings = JSON.parse(cleaned) as Finding[];
-      if (!Array.isArray(findings)) throw new Error("Response is not an array");
+      const out = parseClaudeJson(cleaned);
+      findings = out.findings;
+      propertyChanges = out.propertyChanges;
     } catch (parseErr) {
       console.error("JSON parse failed. Raw:", rawText);
       return new Response(
-        JSON.stringify({ findings: [], error: "JSON parse failed", raw: rawText }),
+        JSON.stringify({ findings: [], propertyChanges: DEFAULT_PROPERTY_CHANGES, error: "JSON parse failed", raw: rawText }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`Returning ${findings.length} findings`);
+    // Ensure every field exists for clients
+    const pc = normalizePropertyChanges(propertyChanges);
+    propertyChanges = {
+      bedroomDelta: pc.bedroomDelta,
+      bathroomDelta: pc.bathroomDelta,
+      sqftDelta: pc.sqftDelta,
+      reasoning: pc.reasoning,
+    };
+
+    console.log(`Returning ${findings.length} findings, propertyChanges:`, JSON.stringify(propertyChanges));
 
     return new Response(
-      JSON.stringify({ findings }),
+      JSON.stringify({ findings, propertyChanges }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
@@ -230,7 +318,7 @@ Return ONLY a valid JSON array. No markdown, no explanation, no code blocks. Jus
     const msg = e instanceof Error ? e.message : String(e);
     console.error("Edge function error:", msg);
     return new Response(
-      JSON.stringify({ findings: [], error: msg }),
+      JSON.stringify({ findings: [], propertyChanges: DEFAULT_PROPERTY_CHANGES, error: msg }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

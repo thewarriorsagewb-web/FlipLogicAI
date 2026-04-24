@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties, type ReactNode } from "react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { AIFinding, WalkthroughCaptureMode, PendingWalkthroughJob } from "./walkthroughTypes";
+import type { AIFinding, WalkthroughCaptureMode, PendingWalkthroughJob, PropertyChanges, AnalyzeWalkthroughResponse } from "./walkthroughTypes";
+import { normalizePropertyChanges } from "./walkthroughTypes";
 import { WalkthroughMediaRecorder, WALKTHROUGH_TRIGGER_KEY, loadPendingJobs, savePendingJobs, type AIGateDeal } from "./walkthroughMedia";
 import { useSubscription } from "./useSubscription";
 import { PaywallModal } from "./PaywallModal";
@@ -412,13 +413,19 @@ function ScenarioRow({ scenario, inputs, isMobile = false }: { scenario: Scenari
 }
 
 // ─── AI WALKTHROUGH TAB ───────────────────────────────────────────────────────
-function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, dealId, userId, currentDeal, canUseAI, triggerAIUse, onNeedPaywall }: {
+function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, dealId, userId, currentDeal, canUseAI, triggerAIUse, onNeedPaywall,
+  propertyChangeBanner, onPropertyChangeFromAnalysis, onAcceptPropertyChangeBanner, onDismissPropertyChangeBanner, onModifyPropertySpecsManually }: {
   address: string; buildYear: number; onAddToScope: (items: ScopeItem[]) => void; isMobile?: boolean;
   dealId: string; userId: string;
   currentDeal: Deal;
   canUseAI: (deal: AIGateDeal) => boolean;
   triggerAIUse: (dealId: string) => Promise<void>;
   onNeedPaywall: (reason: string) => void;
+  propertyChangeBanner: PropertyChanges | null;
+  onPropertyChangeFromAnalysis: (p: PropertyChanges) => void;
+  onAcceptPropertyChangeBanner: () => void;
+  onDismissPropertyChangeBanner: () => void;
+  onModifyPropertySpecsManually: () => void;
 }) {
   const [walkMode, setWalkMode] = useState<WalkthroughCaptureMode>("photos");
   const [triggerPhrase, setTriggerPhrase] = useState(() => localStorage.getItem(WALKTHROUGH_TRIGGER_KEY) || "flag this");
@@ -489,10 +496,12 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
     try {
       const { data, error: fnErr } = await supabase.functions.invoke("analyze-walkthrough", { body: job.payload });
       if (fnErr) throw new Error(fnErr.message || String(fnErr));
-      const parsed = (data as { findings?: AIFinding[] })?.findings;
+      const res = data as AnalyzeWalkthroughResponse;
+      const parsed = res.findings;
       if (!parsed || !Array.isArray(parsed)) throw new Error("Invalid response from analyze-walkthrough");
       setFindings(parsed);
       setSelectedFindings(new Set(parsed.map((_, i) => i)));
+      onPropertyChangeFromAnalysis(normalizePropertyChanges(res.propertyChanges));
       setStatus(`Synced — ${parsed.length} findings identified.`);
       const next = loadPendingJobs().filter((j) => j.id !== job.id);
       savePendingJobs(next);
@@ -548,12 +557,14 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
           : fnErr.message || String(fnErr);
         throw new Error(detail);
       }
-      const findings = (data as { findings?: AIFinding[]; error?: string })?.findings;
-      const serverError = (data as { error?: string })?.error;
+      const res = data as AnalyzeWalkthroughResponse;
+      const findings = res.findings;
+      const serverError = res.error;
       if (serverError) throw new Error(serverError);
       if (!findings || !Array.isArray(findings)) throw new Error("Invalid response: " + JSON.stringify(data));
       setFindings(findings);
       setSelectedFindings(new Set(findings.map((_, i) => i)));
+      onPropertyChangeFromAnalysis(normalizePropertyChanges(res.propertyChanges));
       setStatus(`Analysis complete — ${findings.length} findings identified.`);
       await triggerAIUse(dealId);
     } catch (err: unknown) {
@@ -577,6 +588,13 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
 
   const hazmatFindings = findings.filter((f) => f.hazmat);
   const totalEstimate = findings.filter((_, i) => selectedFindings.has(i)).reduce((s, f) => s + f.estimatedCost, 0);
+
+  const showPropertyChangeBanner = Boolean(
+    propertyChangeBanner
+    && dealId !== DEMO_DEAL_ID
+    && (propertyChangeBanner.bedroomDelta !== 0 || propertyChangeBanner.bathroomDelta !== 0 || propertyChangeBanner.sqftDelta !== 0)
+  );
+  const fmtBath = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
   const modeTabs: { id: WalkthroughCaptureMode; label: string }[] = [
     { id: "photos", label: "📸 Photos" },
@@ -750,6 +768,7 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
                   setSelectedFindings(new Set(f.map((_, i) => i)));
                   setStatus(`Analysis complete — ${f.length} findings identified.`);
                 }}
+                onPropertyChanges={onPropertyChangeFromAnalysis}
                 onAnalyzing={setMediaAnalyzing}
               />
             </div>
@@ -757,6 +776,62 @@ function AIWalkthroughTab({ address, buildYear, onAddToScope, isMobile = false, 
 
           {status && !analyzing && !mediaAnalyzing && <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#22c55e", marginBottom: 12 }}>✓ {status}</div>}
           {error && <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 12 }}>✗ {error}</div>}
+
+          {showPropertyChangeBanner && propertyChangeBanner && (
+            <div
+              style={{
+                background: "linear-gradient(135deg, #172554 0%, #0f172a 100%)",
+                border: "1px solid #3b82f6",
+                borderRadius: 10,
+                padding: isMobile ? 16 : 18,
+                marginBottom: 16,
+                boxShadow: "0 4px 24px rgba(59, 130, 246, 0.12)",
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#e0e7ff", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>🏠 AI detected planned property changes</div>
+              <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.65, marginBottom: 10 }}>
+                <div>
+                  <span style={{ color: "#64748b" }}>Current specs: </span>
+                  {currentDeal.subjectBedrooms || 0} bed / {fmtBath(currentDeal.subjectBathrooms || 0)} bath / {Math.round(currentDeal.subjectSqft || 0)} sqft
+                </div>
+                <div>
+                  <span style={{ color: "#64748b" }}>Proposed specs: </span>
+                  {Math.max(0, Math.round((currentDeal.subjectBedrooms || 0) + propertyChangeBanner.bedroomDelta))} bed /{" "}
+                  {fmtBath(Math.max(0, (currentDeal.subjectBathrooms || 0) + propertyChangeBanner.bathroomDelta))} bath /{" "}
+                  {Math.max(0, Math.round((currentDeal.subjectSqft || 0) + propertyChangeBanner.sqftDelta))} sqft
+                </div>
+              </div>
+              {propertyChangeBanner.reasoning ? (
+                <div style={{ fontSize: 12, color: "#cbd5e1", marginBottom: 12, fontStyle: "italic", lineHeight: 1.5 }}>AI reasoning: &ldquo;{propertyChangeBanner.reasoning}&rdquo;</div>
+              ) : null}
+              <div style={{ fontSize: 11, color: "#f59e0b", marginBottom: 16, lineHeight: 1.5 }}>
+                These changes can affect ARV — review comps after updating.
+              </div>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", flexWrap: "wrap", gap: 10, alignItems: isMobile ? "stretch" : "center" }}>
+                <button
+                  type="button"
+                  onClick={onAcceptPropertyChangeBanner}
+                  style={{ minHeight: 48, background: "linear-gradient(135deg, #1d4ed8, #1e40af)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 13, fontFamily: "'Syne', sans-serif", padding: "0 18px", cursor: "pointer" }}
+                >
+                  Accept all changes
+                </button>
+                <button
+                  type="button"
+                  onClick={onModifyPropertySpecsManually}
+                  style={{ minHeight: 48, background: "transparent", color: "#94a3b8", border: "1px solid #334155", borderRadius: 8, fontWeight: 600, fontSize: 13, fontFamily: "'Syne', sans-serif", padding: "0 18px", cursor: "pointer" }}
+                >
+                  Modify manually
+                </button>
+                <button
+                  type="button"
+                  onClick={onDismissPropertyChangeBanner}
+                  style={{ minHeight: 48, background: "transparent", color: "#64748b", border: "1px solid #1e293b", borderRadius: 8, fontWeight: 600, fontSize: 12, fontFamily: "'Syne', sans-serif", padding: "0 14px", cursor: "pointer" }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
 
           {findings.length > 0 && (
             <div>
@@ -1477,6 +1552,8 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const isMobile = useIsMobile();
   const saveTimer = useRef<any>(null);
+  const propertySpecsRef = useRef<HTMLDivElement | null>(null);
+  const [aiPropertyChangeBanner, setAiPropertyChangeBanner] = useState<PropertyChanges | null>(null);
 
   const { subscription, loading: subLoading, refetch: refetchSubscription } = useSubscription(supabase, user?.id ?? null);
   const [paywallOpen, setPaywallOpen] = useState(false);
@@ -1663,6 +1740,10 @@ export default function App() {
     else document.body.style.overflow = "";
     return () => { document.body.style.overflow = ""; };
   }, [isMobile, sidebarOpen]);
+
+  useEffect(() => {
+    setAiPropertyChangeBanner(null);
+  }, [activeDealId]);
 
   // ─── Auth listener ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1933,6 +2014,38 @@ export default function App() {
   const updateInputs = (updates: Partial<DealInputs>) => updateDeal({ inputs: { ...inputs, ...updates } });
   const set = (key: keyof DealInputs) => (value: number | string) => updateInputs({ [key]: value });
 
+  const handleAiWalkthroughPropertyChanges = useCallback((p: PropertyChanges) => {
+    const n = normalizePropertyChanges(p);
+    if (n.bedroomDelta !== 0 || n.bathroomDelta !== 0 || n.sqftDelta !== 0) {
+      setAiPropertyChangeBanner(n);
+    }
+  }, []);
+
+  const acceptAiPropertyChangeBanner = useCallback(() => {
+    if (!aiPropertyChangeBanner || !activeDeal) return;
+    const b = aiPropertyChangeBanner;
+    setAiPropertyChangeBanner(null);
+    const rawBed = (activeDeal.subjectBedrooms || 0) + b.bedroomDelta;
+    const rawBath = (activeDeal.subjectBathrooms || 0) + b.bathroomDelta;
+    const rawSq = (activeDeal.subjectSqft || 0) + Math.round(b.sqftDelta);
+    if (rawBed < 0) console.warn("FlipLogic: clamping bedroom count to 0 after AI spec update");
+    if (rawBath < 0) console.warn("FlipLogic: clamping bathroom count to 0 after AI spec update");
+    if (rawSq < 0) console.warn("FlipLogic: clamping sqft to 0 after AI spec update");
+    const nb = Math.max(0, Math.round(rawBed));
+    const nba = Math.max(0, rawBath);
+    const nsq = Math.max(0, rawSq);
+    updateDeal({ subjectBedrooms: nb, subjectBathrooms: nba, subjectSqft: nsq });
+    setActivityToast({ text: "Property specs updated based on AI walkthrough.", ms: 5000 });
+  }, [aiPropertyChangeBanner, activeDeal, updateDeal]);
+
+  const modifyAiPropertySpecsManually = useCallback(() => {
+    setAiPropertyChangeBanner(null);
+    setActiveTab("deal");
+    window.setTimeout(() => {
+      propertySpecsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+  }, []);
+
   const handleNewDeal = async () => {
     if (!user) return;
     const { data, error } = await supabase.from("deals").insert({
@@ -2127,7 +2240,7 @@ export default function App() {
                 <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Deal Inputs</div>
                 <InputField label="Purchase Price" value={inputs.purchasePrice} onChange={set("purchasePrice")} isMobile={isMobile} />
 
-                <div style={{ marginBottom: isMobile ? 18 : 16 }}>
+                <div ref={propertySpecsRef} style={{ marginBottom: isMobile ? 18 : 16 }}>
                   <div style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Property Specs</div>
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
                     <div>
@@ -2254,6 +2367,11 @@ export default function App() {
               canUseAI={canUseAI}
               triggerAIUse={triggerAIUse}
               onNeedPaywall={openPaywall}
+              propertyChangeBanner={aiPropertyChangeBanner}
+              onPropertyChangeFromAnalysis={handleAiWalkthroughPropertyChanges}
+              onAcceptPropertyChangeBanner={acceptAiPropertyChangeBanner}
+              onDismissPropertyChangeBanner={() => setAiPropertyChangeBanner(null)}
+              onModifyPropertySpecsManually={modifyAiPropertySpecsManually}
             />
           )}
 
