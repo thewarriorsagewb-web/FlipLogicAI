@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties, 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { AIFinding, WalkthroughCaptureMode, PendingWalkthroughJob, PropertyChanges, AnalyzeWalkthroughResponse } from "./walkthroughTypes";
 import { normalizePropertyChanges } from "./walkthroughTypes";
-import { WalkthroughMediaRecorder, WALKTHROUGH_TRIGGER_KEY, loadPendingJobs, savePendingJobs, type AIGateDeal } from "./walkthroughMedia";
+import { WalkthroughMediaRecorder, WALKTHROUGH_TRIGGER_KEY, isMobileDevice, loadPendingJobs, savePendingJobs, type AIGateDeal } from "./walkthroughMedia";
 import { useSubscription } from "./useSubscription";
 import { PaywallModal } from "./PaywallModal";
 // ─── Supabase Client ──────────────────────────────────────────────────────────
@@ -859,8 +859,11 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                 value={triggerPhrase}
                 onChange={(e) => saveTriggerPhrase(e.target.value)}
                 placeholder="flag this"
-                style={{ width: "100%", boxSizing: "border-box", minHeight: 48, background: "#060b14", border: "1px solid #1e293b", borderRadius: 8, color: "#f1f5f9", padding: "12px 14px", fontSize: 15, marginBottom: 14 }}
+                style={{ width: "100%", boxSizing: "border-box", minHeight: 48, background: "#060b14", border: "1px solid #1e293b", borderRadius: 8, color: "#f1f5f9", padding: "12px 14px", fontSize: 15, marginBottom: isMobileDevice() ? 6 : 14 }}
               />
+              {isMobileDevice() && (
+                <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.45, marginBottom: 14 }}>Voice trigger is disabled on mobile. Use the 🚩 Flag This button during recording.</div>
+              )}
               <WalkthroughMediaRecorder
                 key={walkMode}
                 mode={walkMode as "audio" | "video" | "audiovideo"}

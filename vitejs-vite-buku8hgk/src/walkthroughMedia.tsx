@@ -6,6 +6,16 @@ import { normalizePropertyChanges } from "./walkthroughTypes";
 export const WALKTHROUGH_PENDING_KEY = "fliplogic_walkthrough_pending";
 export const WALKTHROUGH_TRIGGER_KEY = "fliplogic_walkthrough_trigger_phrase";
 
+/** True for phone/tablet browsers. Desktop keeps Web Speech (voice trigger); mobile uses tap-to-flag only — avoids chime, mic contention, and unreliable SR on Android. */
+export function isMobileDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+  if (mobileRegex.test(ua)) return true;
+  if (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1) return true;
+  return false;
+}
+
 export function loadPendingJobs(): PendingWalkthroughJob[] {
   try {
     const raw = localStorage.getItem(WALKTHROUGH_PENDING_KEY);
@@ -175,6 +185,7 @@ export function WalkthroughMediaRecorder({
   };
 
   const startSpeechListen = () => {
+    if (isMobileDevice()) return;
     const SR = (window as unknown as { SpeechRecognition?: new () => any; webkitSpeechRecognition?: new () => any }).SpeechRecognition
       || (window as unknown as { webkitSpeechRecognition?: new () => any }).webkitSpeechRecognition;
     if (!SR) return;
