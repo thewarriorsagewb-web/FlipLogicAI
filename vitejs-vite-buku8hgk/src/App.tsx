@@ -2853,7 +2853,11 @@ export default function App() {
     });
     setDeals((prev) => [nd, ...prev]);
     setActiveDealId(nd.id);
+    setShowSettings(false);
     setActiveTab("deal");
+    if (isMobile && sidebarOpen) {
+      setSidebarOpen(false);
+    }
     return true;
   };
 
