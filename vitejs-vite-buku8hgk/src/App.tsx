@@ -415,7 +415,7 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
     setError("");
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(trimmed, {
-        redirectTo: `${window.location.origin}/#type=recovery`,
+        redirectTo: window.location.origin,
       });
       if (resetError) throw resetError;
       setSentTo(trimmed);
