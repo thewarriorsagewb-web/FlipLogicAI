@@ -2876,7 +2876,7 @@ export default function App() {
           type="button"
           aria-hidden={!sidebarOpen}
           tabIndex={sidebarOpen ? 0 : -1}
-          onClick={() => { setShowSettings(false); setSidebarOpen(false); }}
+          onClick={() => setSidebarOpen(false)}
           style={{
             position: "fixed", inset: 0, zIndex: 250, border: "none", padding: 0, margin: 0,
             background: sidebarOpen ? "rgba(0,0,0,0.5)" : "transparent",
@@ -2887,13 +2887,13 @@ export default function App() {
         />
       )}
       {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setActiveDealId(id); }} onNew={handleAddDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} onOpenSettings={() => setShowSettings(true)} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="sidebar" />}
-      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setActiveDealId(id); }} onNew={handleAddDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} onOpenSettings={() => setShowSettings(true)} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => { setShowSettings(false); setSidebarOpen(false); }} />}
+      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setActiveDealId(id); }} onNew={handleAddDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} onOpenSettings={() => setShowSettings(true)} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", minWidth: 0 }}>
         {/* Header */}
         <div style={{ background: "linear-gradient(135deg, #060b14 0%, #0d1829 100%)", borderBottom: "1px solid #1e293b", padding: isMobile ? "12px 14px" : "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
             {isMobile && (
-              <button type="button" aria-label="Open deals menu" aria-expanded={sidebarOpen} onClick={() => { setShowSettings(false); setSidebarOpen(true); }} style={{ flexShrink: 0, minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#f1f5f9", fontSize: 20, cursor: "pointer", padding: 0 }}>
+              <button type="button" aria-label="Open deals menu" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)} style={{ flexShrink: 0, minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#f1f5f9", fontSize: 20, cursor: "pointer", padding: 0 }}>
                 ☰
               </button>
             )}
