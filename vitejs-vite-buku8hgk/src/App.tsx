@@ -1799,8 +1799,8 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo, isMobi
 }
 
 // ─── Deals Sidebar ────────────────────────────────────────────────────────────
-function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmail, onSignOut, onOpenSettings, syncing, subscriptionPanel, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
-  deals: Deal[]; activeDealId: string; onSelect: (id: string) => void; onNew: () => boolean | Promise<boolean>; onDelete: (id: string) => void;
+function DealsSidebar({ deals, activeDealId, onSelect, onNew, userEmail, onSignOut, onOpenSettings, syncing, subscriptionPanel, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
+  deals: Deal[]; activeDealId: string; onSelect: (id: string) => void; onNew: () => boolean | Promise<boolean>;
   userEmail: string; onSignOut: () => void; onOpenSettings: () => void; syncing: boolean;
   subscriptionPanel?: ReactNode;
   variant?: "sidebar" | "drawer"; drawerOpen?: boolean; onCloseDrawer?: () => void;
@@ -1860,7 +1860,6 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmai
                 <div style={{ fontSize: 12, color: "#22c55e", fontFamily: "monospace" }}>{m.netProfit !== 0 ? fmt(m.netProfit) : "—"}</div>
                 <div style={{ fontSize: 10, color: STATUS_STYLES[deal.inputs.dealStatus].color }}>{deal.inputs.dealStatus.charAt(0).toUpperCase() + deal.inputs.dealStatus.slice(1)}</div>
               </div>
-              {isActive && <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(deal.id); }} style={{ marginTop: 8, background: "transparent", border: "1px solid #2a0a0a", color: "#f87171", borderRadius: 4, padding: "10px 8px", fontSize: 11, cursor: "pointer", width: "100%", minHeight: 44, fontFamily: "'Syne', sans-serif" }}>Delete Deal</button>}
             </div>
           );
         })}
@@ -1883,14 +1882,18 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmai
 function SettingsPage({
   userEmail,
   subscription,
+  deals,
   onBack,
   onOpenPaywall,
+  onRequestDeleteDeal,
   onSignOut,
 }: {
   userEmail: string;
   subscription: ReturnType<typeof useSubscription>["subscription"];
+  deals: Deal[];
   onBack: () => void;
   onOpenPaywall: () => void;
+  onRequestDeleteDeal: (deal: Deal) => void;
   onSignOut: () => void;
 }) {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -1947,6 +1950,13 @@ function SettingsPage({
   const heading: CSSProperties = { fontSize: 13, fontWeight: 800, color: "#e2e8f0", marginBottom: 10, letterSpacing: "0.06em", textTransform: "uppercase" };
   const label: CSSProperties = { display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" };
   const input: CSSProperties = { width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 10 };
+  const formatSpecSummary = (deal: Deal) => {
+    const bits: string[] = [];
+    if (deal.subjectBedrooms > 0) bits.push(`${Math.round(deal.subjectBedrooms)} bed`);
+    if (deal.subjectBathrooms > 0) bits.push(`${deal.subjectBathrooms} bath`);
+    if (deal.subjectSqft > 0) bits.push(`${Math.round(deal.subjectSqft).toLocaleString()} sqft`);
+    return bits.join(" / ");
+  };
 
   return (
     <div style={{ maxWidth: 840 }}>
@@ -1988,6 +1998,45 @@ function SettingsPage({
           {isInvestor ? "Manage Subscription" : "Upgrade to Investor"}
         </button>
         {subscriptionToast ? <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 10 }}>{subscriptionToast}</div> : null}
+      </div>
+      <div style={section}>
+        <div style={heading}>Manage Deals</div>
+        {deals.length === 0 ? (
+          <div style={{ fontSize: 13, color: "#64748b" }}>No deals yet.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {deals.map((deal) => {
+              const address = (deal.inputs.propertyAddress || "").trim() || "Untitled deal";
+              const isDemoDeal = deal.inputs.propertyAddress === "123 Main St, Atlanta, GA 30301";
+              const specs = formatSpecSummary(deal);
+              return (
+                <div key={deal.id} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, border: "1px solid #1e293b", borderRadius: 8, padding: "10px 12px", background: "#060b14" }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 13, color: "#f1f5f9", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{address}</div>
+                    {specs ? (
+                      <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>{specs}</div>
+                    ) : null}
+                    <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      {isDemoDeal ? (
+                        <div style={{ fontSize: 9, color: "#f59e0b", background: "#2d2000", border: "1px solid #d97706", borderRadius: 3, padding: "2px 6px", letterSpacing: "0.08em", fontWeight: 700 }}>DEMO DEAL</div>
+                      ) : null}
+                      {deal.aiLocked ? (
+                        <div style={{ fontSize: 9, color: "#94a3b8", background: "#111827", border: "1px solid #334155", borderRadius: 3, padding: "2px 6px", letterSpacing: "0.08em", fontWeight: 700 }}>AI LOCKED</div>
+                      ) : null}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onRequestDeleteDeal(deal)}
+                    style={{ background: "transparent", border: "1px solid #dc2626", borderRadius: 8, color: "#f87171", padding: "8px 12px", minHeight: 40, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif", flexShrink: 0 }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
       <div style={section}>
         <button type="button" onClick={onSignOut} style={{ background: "transparent", border: "1px solid #dc2626", borderRadius: 8, color: "#f87171", padding: "10px 16px", minHeight: 44, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>Sign Out</button>
@@ -2098,6 +2147,43 @@ function DealLimitModal({ onClose, onUpgrade, onManageDeals, isMobile = false }:
   );
 }
 
+function DeleteDealConfirmationModal({ deal, onCancel, onConfirmDelete, isMobile = false }: { deal: Deal; onCancel: () => void; onConfirmDelete: () => void; isMobile?: boolean }) {
+  const address = (deal.inputs.propertyAddress || "").trim();
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 2003, background: "rgba(0,0,0,0.88)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, boxSizing: "border-box" }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-deal-title"
+      onClick={onCancel}
+    >
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: isMobile ? 20 : 24, maxWidth: 520, width: "100%" }}>
+        <h2 id="delete-deal-title" style={{ fontSize: 18, fontWeight: 800, color: "#e2e8f0", margin: "0 0 12px 0", fontFamily: "'Syne', sans-serif" }}>Delete this deal?</h2>
+        <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6, margin: "0 0 20px 0" }}>
+          {address || "This deal"} and all associated data (comps, scope items, walkthrough findings) will be permanently deleted. This cannot be undone.
+        </p>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10 }}>
+          <button
+            type="button"
+            autoFocus
+            onClick={onCancel}
+            style={{ flex: 1, minHeight: 44, background: "transparent", border: "1px solid #334155", borderRadius: 8, color: "#94a3b8", fontWeight: 600, fontSize: 13, fontFamily: "'Syne', sans-serif", cursor: "pointer", padding: "10px 16px" }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirmDelete}
+            style={{ flex: 1, minHeight: 44, background: "transparent", border: "1px solid #dc2626", borderRadius: 8, color: "#f87171", fontWeight: 700, fontSize: 13, fontFamily: "'Syne', sans-serif", cursor: "pointer", padding: "10px 16px" }}
+          >
+            Delete Deal
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Onboarding Modal ─────────────────────────────────────────────────────────
 function OnboardingModal({ onClose, onNewDeal, onSeen, isMobile = false }: { onClose: () => void; onNewDeal: () => boolean | Promise<boolean>; onSeen: () => void; isMobile?: boolean }) {
   return (
@@ -2177,6 +2263,7 @@ export default function App() {
   const [paywallReason, setPaywallReason] = useState("");
   const [activityToast, setActivityToast] = useState<{ text: string; ms: number } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [dealPendingDelete, setDealPendingDelete] = useState<Deal | null>(null);
   const [trialExhaustedOpen, setTrialExhaustedOpen] = useState(false);
   const [dealLimitOpen, setDealLimitOpen] = useState(false);
 
@@ -2796,6 +2883,12 @@ export default function App() {
     if (activeDealId === id) setActiveDealId(remaining.length > 0 ? remaining[0].id : "");
   };
 
+  const handleConfirmDeleteDeal = async () => {
+    if (!dealPendingDelete) return;
+    await handleDelete(dealPendingDelete.id);
+    setDealPendingDelete(null);
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     try {
@@ -2886,8 +2979,8 @@ export default function App() {
           }}
         />
       )}
-      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setActiveDealId(id); }} onNew={handleAddDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} onOpenSettings={() => setShowSettings(true)} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="sidebar" />}
-      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setActiveDealId(id); }} onNew={handleAddDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} onOpenSettings={() => setShowSettings(true)} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
+      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setActiveDealId(id); }} onNew={handleAddDeal} userEmail={user.email} onSignOut={handleSignOut} onOpenSettings={() => setShowSettings(true)} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="sidebar" />}
+      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setActiveDealId(id); }} onNew={handleAddDeal} userEmail={user.email} onSignOut={handleSignOut} onOpenSettings={() => setShowSettings(true)} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", minWidth: 0 }}>
         {/* Header */}
         <div style={{ background: "linear-gradient(135deg, #060b14 0%, #0d1829 100%)", borderBottom: "1px solid #1e293b", padding: isMobile ? "12px 14px" : "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
@@ -3297,8 +3390,10 @@ export default function App() {
             <SettingsPage
               userEmail={user.email}
               subscription={subscription}
+              deals={deals}
               onBack={() => setShowSettings(false)}
               onOpenPaywall={() => openPaywall("Upgrade to unlock Investor plan features.")}
+              onRequestDeleteDeal={(deal) => setDealPendingDelete(deal)}
               onSignOut={handleSignOut}
             />
           </div>
@@ -3339,7 +3434,16 @@ export default function App() {
           }}
           onManageDeals={() => {
             setDealLimitOpen(false);
+            setShowSettings(true);
           }}
+        />
+      )}
+      {dealPendingDelete && (
+        <DeleteDealConfirmationModal
+          deal={dealPendingDelete}
+          isMobile={isMobile}
+          onCancel={() => setDealPendingDelete(null)}
+          onConfirmDelete={() => { void handleConfirmDeleteDeal(); }}
         />
       )}
       <PaywallModal
