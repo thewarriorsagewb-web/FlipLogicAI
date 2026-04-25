@@ -1666,7 +1666,7 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo, isMobi
 
 // ─── Deals Sidebar ────────────────────────────────────────────────────────────
 function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmail, onSignOut, syncing, subscriptionPanel, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
-  deals: Deal[]; activeDealId: string; onSelect: (id: string) => void; onNew: () => void; onDelete: (id: string) => void;
+  deals: Deal[]; activeDealId: string; onSelect: (id: string) => void; onNew: () => boolean | Promise<boolean>; onDelete: (id: string) => void;
   userEmail: string; onSignOut: () => void; syncing: boolean;
   subscriptionPanel?: ReactNode;
   variant?: "sidebar" | "drawer"; drawerOpen?: boolean; onCloseDrawer?: () => void;
@@ -1697,7 +1697,16 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmai
       <div style={{ padding: isDrawer ? "12px 14px 10px" : "16px 14px 10px", borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
         {!isDrawer && <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>My Deals ({deals.length})</div>}
         {isDrawer && <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>({deals.length})</div>}
-        <button type="button" onClick={() => { onNew(); if (isDrawer) onCloseDrawer?.(); }} style={{ width: "100%", background: "#1d4ed8", border: "none", borderRadius: 6, color: "#fff", padding: isDrawer ? "12px 0" : "9px 0", minHeight: isDrawer ? 44 : undefined, fontSize: isDrawer ? 13 : 12, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>+ NEW DEAL</button>
+        <button
+          type="button"
+          onClick={async () => {
+            const created = await Promise.resolve(onNew());
+            if (isDrawer && created) onCloseDrawer?.();
+          }}
+          style={{ width: "100%", background: "#1d4ed8", border: "none", borderRadius: 6, color: "#fff", padding: isDrawer ? "12px 0" : "9px 0", minHeight: isDrawer ? 44 : undefined, fontSize: isDrawer ? 13 : 12, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
+        >
+          + NEW DEAL
+        </button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
         {deals.map((deal) => {
@@ -1749,7 +1758,11 @@ function TrialExhaustedModal({ onClose, onUpgrade, onContinueWithoutAI, isMobile
           <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10, alignItems: isMobile ? "stretch" : "stretch" }}>
             <button
               type="button"
-              onClick={onUpgrade}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onUpgrade();
+              }}
               style={{ flex: isMobile ? "none" : 1, minWidth: 0, minHeight: 48, width: isMobile ? "100%" : "auto", background: "#16a34a", border: "1px solid #16a34a", borderRadius: 8, color: "#fff", fontWeight: 700, fontSize: 13, fontFamily: "'Syne', sans-serif", cursor: "pointer", padding: "10px 16px" }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "#15803d"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "#16a34a"; }}
@@ -1758,7 +1771,11 @@ function TrialExhaustedModal({ onClose, onUpgrade, onContinueWithoutAI, isMobile
             </button>
             <button
               type="button"
-              onClick={onContinueWithoutAI}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onContinueWithoutAI();
+              }}
               style={{ flex: isMobile ? "none" : 1, minHeight: 48, width: isMobile ? "100%" : "auto", background: "transparent", border: "1px solid #334155", borderRadius: 8, color: "#94a3b8", fontWeight: 600, fontSize: 13, fontFamily: "'Syne', sans-serif", cursor: "pointer", padding: "10px 16px" }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(51, 65, 85, 0.4)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
@@ -1766,7 +1783,15 @@ function TrialExhaustedModal({ onClose, onUpgrade, onContinueWithoutAI, isMobile
               Continue without AI
             </button>
           </div>
-          <button type="button" onClick={onClose} style={{ minHeight: 40, background: "transparent", border: "none", color: "#64748b", fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "center", padding: "4px" }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onClose();
+            }}
+            style={{ minHeight: 40, background: "transparent", border: "none", color: "#64748b", fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "center", padding: "4px" }}
+          >
             Cancel
           </button>
         </div>
@@ -1775,9 +1800,15 @@ function TrialExhaustedModal({ onClose, onUpgrade, onContinueWithoutAI, isMobile
   );
 }
 
-function DealLimitModal({ onClose, onUpgrade, isMobile = false }: { onClose: () => void; onUpgrade: () => void; isMobile?: boolean }) {
+function DealLimitModal({ onClose, onUpgrade, onManageDeals, isMobile = false }: { onClose: () => void; onUpgrade: () => void; onManageDeals: () => void; isMobile?: boolean }) {
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 2002, background: "rgba(0,0,0,0.88)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, boxSizing: "border-box" }} role="dialog" aria-modal="true" aria-labelledby="deal-limit-title" onClick={onClose}>
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 2002, background: "rgba(0,0,0,0.88)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, boxSizing: "border-box" }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="deal-limit-title"
+      onClick={onClose}
+    >
       <div onClick={(e) => e.stopPropagation()} style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: isMobile ? 20 : 28, maxWidth: 480, width: "100%" }}>
         <h2 id="deal-limit-title" style={{ fontSize: 18, fontWeight: 800, color: "#e2e8f0", margin: "0 0 12px 0", fontFamily: "'Syne', sans-serif" }}>Free tier deal limit reached</h2>
         <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.55, margin: "0 0 20px 0" }}>
@@ -1786,7 +1817,11 @@ function DealLimitModal({ onClose, onUpgrade, isMobile = false }: { onClose: () 
         <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10 }}>
           <button
             type="button"
-            onClick={onUpgrade}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onUpgrade();
+            }}
             style={{ flex: 1, minHeight: 48, background: "#16a34a", border: "1px solid #16a34a", borderRadius: 8, color: "#fff", fontWeight: 700, fontSize: 13, fontFamily: "'Syne', sans-serif", cursor: "pointer", padding: "10px 16px" }}
             onMouseEnter={(e) => { e.currentTarget.style.background = "#15803d"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "#16a34a"; }}
@@ -1795,7 +1830,11 @@ function DealLimitModal({ onClose, onUpgrade, isMobile = false }: { onClose: () 
           </button>
           <button
             type="button"
-            onClick={onClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onManageDeals();
+            }}
             style={{ flex: 1, minHeight: 48, background: "transparent", border: "1px solid #334155", borderRadius: 8, color: "#94a3b8", fontWeight: 600, fontSize: 13, fontFamily: "'Syne', sans-serif", cursor: "pointer", padding: "10px 16px" }}
             onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(51, 65, 85, 0.4)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
@@ -1809,7 +1848,7 @@ function DealLimitModal({ onClose, onUpgrade, isMobile = false }: { onClose: () 
 }
 
 // ─── Onboarding Modal ─────────────────────────────────────────────────────────
-function OnboardingModal({ onClose, onNewDeal, isMobile = false }: { onClose: () => void; onNewDeal: () => void; isMobile?: boolean }) {
+function OnboardingModal({ onClose, onNewDeal, isMobile = false }: { onClose: () => void; onNewDeal: () => boolean | Promise<boolean>; isMobile?: boolean }) {
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? "16px" : "24px", overflowY: "auto" }}>
       <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12, padding: isMobile ? "24px 20px" : 40, maxWidth: 480, width: "100%", boxSizing: "border-box", maxHeight: isMobile ? "90vh" : "85vh", overflowY: "auto" }}>
@@ -1843,8 +1882,13 @@ function OnboardingModal({ onClose, onNewDeal, isMobile = false }: { onClose: ()
 
         <button
           type="button"
-          onClick={() => { localStorage.setItem("fliplogic_onboarding_complete", "true"); onNewDeal(); onClose(); }}
-          style={{ width: "100%", background: "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 0" : "14px 0", fontSize: isMobile ? 15 : 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 10 }}>
+          onClick={async () => {
+            localStorage.setItem("fliplogic_onboarding_complete", "true");
+            const created = await Promise.resolve(onNewDeal());
+            if (created) onClose();
+          }}
+          style={{ width: "100%", background: "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 0" : "14px 0", fontSize: isMobile ? 15 : 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 10 }}
+        >
           + Create My First Deal
         </button>
 
@@ -2436,8 +2480,8 @@ export default function App() {
 
   const getUserDealCount = () => deals.length;
 
-  const insertNewDeal = async (aiLocked: boolean) => {
-    if (!user) return;
+  const insertNewDeal = async (aiLocked: boolean): Promise<boolean> => {
+    if (!user) return false;
     const { data, error } = await supabase.from("deals").insert({
       user_id: user.id,
       ai_analysis_used: false,
@@ -2450,7 +2494,7 @@ export default function App() {
       closing_costs_buy: 0, closing_costs_sell: 0, monthly_rent: 0, monthly_expenses: 0,
       notes: "", deal_status: "prospect", mao_percent: 70, subject_sqft: 0, subject_bedrooms: 0, subject_bathrooms: 0, year_built: null, lender_info: BLANK_LENDER_INFO,
     }).select().single();
-    if (error || !data) return;
+    if (error || !data) return false;
     const nd: Deal = applySyncedRehabArv({
       id: data.id, createdAt: data.created_at, updatedAt: data.updated_at,
       inputs: { ...BLANK_INPUTS },
@@ -2461,25 +2505,25 @@ export default function App() {
     setDeals((prev) => [nd, ...prev]);
     setActiveDealId(nd.id);
     setActiveTab("deal");
+    return true;
   };
 
-  const handleAddDeal = async () => {
-    if (!user) return;
+  const handleAddDeal = async (): Promise<boolean> => {
+    if (!user) return false;
     if (isPayingInvestor) {
-      await insertNewDeal(false);
-      return;
+      return await insertNewDeal(false);
     }
     if (getUserDealCount() >= 8) {
       setDealLimitOpen(true);
-      return;
+      return false;
     }
     const tlim = subscription?.trial_deals_limit ?? 5;
     const tused = subscription?.trial_deals_used ?? 0;
     if (tused >= tlim) {
       setTrialExhaustedOpen(true);
-      return;
+      return false;
     }
-    await insertNewDeal(false);
+    return await insertNewDeal(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -2565,8 +2609,8 @@ export default function App() {
           }}
         />
       )}
-      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={() => { void handleAddDeal(); }} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="sidebar" />}
-      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={() => { void handleAddDeal(); }} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
+      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleAddDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="sidebar" />}
+      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleAddDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", minWidth: 0 }}>
         {/* Header */}
         <div style={{ background: "linear-gradient(135deg, #060b14 0%, #0d1829 100%)", borderBottom: "1px solid #1e293b", padding: isMobile ? "12px 14px" : "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
@@ -2972,7 +3016,7 @@ export default function App() {
         <OnboardingModal
           isMobile={isMobile}
           onClose={() => setShowOnboarding(false)}
-          onNewDeal={() => { void handleAddDeal(); }}
+          onNewDeal={handleAddDeal}
         />
       )}
       {trialExhaustedOpen && (
@@ -2996,6 +3040,9 @@ export default function App() {
           onUpgrade={() => {
             setDealLimitOpen(false);
             openPaywall("Unlimited deals with FlipLogic AI Investor.");
+          }}
+          onManageDeals={() => {
+            setDealLimitOpen(false);
           }}
         />
       )}
