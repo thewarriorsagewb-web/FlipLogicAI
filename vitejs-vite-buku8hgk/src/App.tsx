@@ -85,6 +85,8 @@ interface Deal {
   rentalComps: RentalComp[];
   /** First successful AI walkthrough or RentCast on this deal counts toward trial */
   aiAnalysisUsed?: boolean;
+  /** If true, user created this deal without AI (trial exhausted) — no AI until Investor */
+  aiLocked?: boolean;
 }
 
 interface DealMetrics {
@@ -1734,6 +1736,78 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmai
   );
 }
 
+// ─── Gating modals (add deal) ─────────────────────────────────────────────────
+function TrialExhaustedModal({ onClose, onUpgrade, onContinueWithoutAI, isMobile = false }: { onClose: () => void; onUpgrade: () => void; onContinueWithoutAI: () => void; isMobile?: boolean }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 2002, background: "rgba(0,0,0,0.88)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, boxSizing: "border-box" }} role="dialog" aria-modal="true" aria-labelledby="trial-exh-title" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: isMobile ? 20 : 28, maxWidth: 500, width: "100%", boxShadow: "0 8px 32px rgba(0,0,0,0.45)" }}>
+        <h2 id="trial-exh-title" style={{ fontSize: 18, fontWeight: 800, color: "#e2e8f0", margin: "0 0 12px 0", fontFamily: "'Syne', sans-serif" }}>You&apos;ve used all 5 free AI analyses</h2>
+        <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.55, margin: "0 0 20px 0" }}>
+          To create new deals with AI features (walkthrough, photo analysis, auto comps), upgrade to Investor. You can also continue creating this deal without AI — manual entry, calculations, comps, scope, and reports all still work.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10, alignItems: isMobile ? "stretch" : "stretch" }}>
+            <button
+              type="button"
+              onClick={onUpgrade}
+              style={{ flex: isMobile ? "none" : 1, minWidth: 0, minHeight: 48, width: isMobile ? "100%" : "auto", background: "#16a34a", border: "1px solid #16a34a", borderRadius: 8, color: "#fff", fontWeight: 700, fontSize: 13, fontFamily: "'Syne', sans-serif", cursor: "pointer", padding: "10px 16px" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "#15803d"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "#16a34a"; }}
+            >
+              Upgrade to Investor
+            </button>
+            <button
+              type="button"
+              onClick={onContinueWithoutAI}
+              style={{ flex: isMobile ? "none" : 1, minHeight: 48, width: isMobile ? "100%" : "auto", background: "transparent", border: "1px solid #334155", borderRadius: 8, color: "#94a3b8", fontWeight: 600, fontSize: 13, fontFamily: "'Syne', sans-serif", cursor: "pointer", padding: "10px 16px" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(51, 65, 85, 0.4)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              Continue without AI
+            </button>
+          </div>
+          <button type="button" onClick={onClose} style={{ minHeight: 40, background: "transparent", border: "none", color: "#64748b", fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "center", padding: "4px" }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DealLimitModal({ onClose, onUpgrade, isMobile = false }: { onClose: () => void; onUpgrade: () => void; isMobile?: boolean }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 2002, background: "rgba(0,0,0,0.88)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, boxSizing: "border-box" }} role="dialog" aria-modal="true" aria-labelledby="deal-limit-title" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: isMobile ? 20 : 28, maxWidth: 480, width: "100%" }}>
+        <h2 id="deal-limit-title" style={{ fontSize: 18, fontWeight: 800, color: "#e2e8f0", margin: "0 0 12px 0", fontFamily: "'Syne', sans-serif" }}>Free tier deal limit reached</h2>
+        <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.55, margin: "0 0 20px 0" }}>
+          You&apos;ve reached the 8-deal limit for Free tier. Upgrade to Investor for unlimited deals, or delete a deal first to make room.
+        </p>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10 }}>
+          <button
+            type="button"
+            onClick={onUpgrade}
+            style={{ flex: 1, minHeight: 48, background: "#16a34a", border: "1px solid #16a34a", borderRadius: 8, color: "#fff", fontWeight: 700, fontSize: 13, fontFamily: "'Syne', sans-serif", cursor: "pointer", padding: "10px 16px" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#15803d"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "#16a34a"; }}
+          >
+            Upgrade to Investor
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ flex: 1, minHeight: 48, background: "transparent", border: "1px solid #334155", borderRadius: 8, color: "#94a3b8", fontWeight: 600, fontSize: 13, fontFamily: "'Syne', sans-serif", cursor: "pointer", padding: "10px 16px" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(51, 65, 85, 0.4)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            Manage deals
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Onboarding Modal ─────────────────────────────────────────────────────────
 function OnboardingModal({ onClose, onNewDeal, isMobile = false }: { onClose: () => void; onNewDeal: () => void; isMobile?: boolean }) {
   return (
@@ -1805,6 +1879,17 @@ export default function App() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [paywallReason, setPaywallReason] = useState("");
   const [activityToast, setActivityToast] = useState<{ text: string; ms: number } | null>(null);
+  const [trialExhaustedOpen, setTrialExhaustedOpen] = useState(false);
+  const [dealLimitOpen, setDealLimitOpen] = useState(false);
+
+  const isPayingInvestor = useMemo(
+    () =>
+      Boolean(
+        subscription?.status === "active" &&
+          (subscription.plan === "investor_monthly" || subscription.plan === "investor_annual"),
+      ),
+    [subscription],
+  );
 
   const openPaywall = useCallback((reason: string) => {
     setPaywallReason(reason);
@@ -1813,6 +1898,7 @@ export default function App() {
 
   const canUseAI = useCallback(
     (deal: AIGateDeal) => {
+      if ((deal as Partial<Deal>).aiLocked) return false;
       if (deal.aiAnalysisUsed) return true;
       const sub = subscription;
       if (!sub) {
@@ -1876,19 +1962,48 @@ export default function App() {
     const s = subscription;
     if (!s) return <div style={{ fontSize: 11, color: "#64748b" }}>Plan unavailable</div>;
 
-    if (s.status === "trial") {
+    if (s.status === "trial" && !isPayingInvestor) {
       const used = s.trial_deals_used;
       const lim = Math.max(1, s.trial_deals_limit);
       const pct = Math.min(100, (used / lim) * 100);
+      const label = used >= 5 ? "Upgrade & Unlock AI" : "Upgrade to Investor";
+      const solid = used >= 4;
       return (
         <div>
           <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 6 }}>Subscription</div>
           <div style={{ fontSize: 11, color: "#e2e8f0", fontWeight: 700, marginBottom: 8 }}>
             FREE TRIAL: {used} of {s.trial_deals_limit} analyses used
           </div>
-          <div style={{ background: "#1e293b", borderRadius: 4, height: 6, overflow: "hidden" }}>
+          <div style={{ background: "#1e293b", borderRadius: 4, height: 6, overflow: "hidden", marginBottom: 10 }}>
             <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg, #3b82f6, #6366f1)", transition: "width 0.3s" }} />
           </div>
+          <button
+            type="button"
+            onClick={() => openPaywall("Upgrade to FlipLogic AI Investor to unlock AI features.")}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = solid ? "#15803d" : "rgba(22, 163, 34, 0.15)";
+              e.currentTarget.style.borderColor = solid ? "#15803d" : "#16a34a";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = solid ? "#16a34a" : "transparent";
+              e.currentTarget.style.borderColor = "#16a34a";
+            }}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "10px 16px",
+              borderRadius: 8,
+              fontWeight: 600,
+              fontSize: 12,
+              fontFamily: "'Syne', sans-serif",
+              cursor: "pointer",
+              border: "1px solid #16a34a",
+              color: solid ? "#fff" : "#16a34a",
+              background: solid ? "#16a34a" : "transparent",
+            }}
+          >
+            {label}
+          </button>
         </div>
       );
     }
@@ -1952,7 +2067,7 @@ export default function App() {
       );
     }
     return <div style={{ fontSize: 11, color: "#64748b" }}>Plan: {s.plan} · {s.status}</div>;
-  }, [subscription, subLoading, openPaywall]);
+  }, [subscription, subLoading, openPaywall, isPayingInvestor]);
 
   useEffect(() => {
     if (!activityToast) return;
@@ -2109,6 +2224,7 @@ export default function App() {
             distance: r.distance || "",
           })),
           aiAnalysisUsed: d.ai_analysis_used === true,
+          aiLocked: d.ai_locked === true,
         };
         return applySyncedRehabArv(base);
       });
@@ -2154,6 +2270,7 @@ export default function App() {
       subject_bedrooms: 3,
       subject_bathrooms: 2,
       year_built: null,
+      ai_locked: false,
       lender_info: { investorName: "", investorCompany: "", investorPhone: "", investorEmail: "", lenderName: "" },
     }).select().single();
 
@@ -2174,6 +2291,7 @@ export default function App() {
       await supabase.from("deals").upsert({
         id: deal.id, user_id: user.id, updated_at: new Date().toISOString(),
         ai_analysis_used: deal.aiAnalysisUsed === true,
+        ai_locked: deal.aiLocked === true,
         property_address: deal.inputs.propertyAddress,
         purchase_price: deal.inputs.purchasePrice,
         rehab_initial_estimate: deal.inputs.rehabInitialEstimate,
@@ -2316,11 +2434,14 @@ export default function App() {
     }, 150);
   }, []);
 
-  const handleNewDeal = async () => {
+  const getUserDealCount = () => deals.length;
+
+  const insertNewDeal = async (aiLocked: boolean) => {
     if (!user) return;
     const { data, error } = await supabase.from("deals").insert({
       user_id: user.id,
       ai_analysis_used: false,
+      ai_locked: aiLocked,
       property_address: "", purchase_price: 0,
       rehab_initial_estimate: 0, rehab_manual_override: 0, rehab_cost: 0, rehab_cost_source: "initial",
       arv_initial_estimate: 0, arv: 0, arv_source: "initial",
@@ -2335,10 +2456,30 @@ export default function App() {
       inputs: { ...BLANK_INPUTS },
       comps: [], subjectSqft: 0, subjectBedrooms: 0, subjectBathrooms: 0, yearBuilt: null,
       lenderInfo: { ...BLANK_LENDER_INFO }, scopeItems: [], rentalComps: [], aiAnalysisUsed: false,
+      aiLocked: aiLocked || undefined,
     });
     setDeals((prev) => [nd, ...prev]);
     setActiveDealId(nd.id);
     setActiveTab("deal");
+  };
+
+  const handleAddDeal = async () => {
+    if (!user) return;
+    if (isPayingInvestor) {
+      await insertNewDeal(false);
+      return;
+    }
+    if (getUserDealCount() >= 8) {
+      setDealLimitOpen(true);
+      return;
+    }
+    const tlim = subscription?.trial_deals_limit ?? 5;
+    const tused = subscription?.trial_deals_used ?? 0;
+    if (tused >= tlim) {
+      setTrialExhaustedOpen(true);
+      return;
+    }
+    await insertNewDeal(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -2393,7 +2534,7 @@ export default function App() {
 
   if (!activeDeal) return (
     <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <button type="button" onClick={handleNewDeal} style={{ background: "#1d4ed8", border: "none", color: "#fff", padding: "16px 24px", borderRadius: 8, fontSize: 16, cursor: "pointer", minHeight: 48, width: "min(100%, 320px)" }}>+ Start Your First Deal</button>
+      <button type="button" onClick={() => { void handleAddDeal(); }} style={{ background: "#1d4ed8", border: "none", color: "#fff", padding: "16px 24px", borderRadius: 8, fontSize: 16, cursor: "pointer", minHeight: 48, width: "min(100%, 320px)" }}>+ Start Your First Deal</button>
     </div>
   );
 
@@ -2424,8 +2565,8 @@ export default function App() {
           }}
         />
       )}
-      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleNewDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="sidebar" />}
-      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleNewDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
+      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={() => { void handleAddDeal(); }} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="sidebar" />}
+      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={() => { void handleAddDeal(); }} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", minWidth: 0 }}>
         {/* Header */}
         <div style={{ background: "linear-gradient(135deg, #060b14 0%, #0d1829 100%)", borderBottom: "1px solid #1e293b", padding: isMobile ? "12px 14px" : "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
@@ -2831,7 +2972,31 @@ export default function App() {
         <OnboardingModal
           isMobile={isMobile}
           onClose={() => setShowOnboarding(false)}
-          onNewDeal={() => { void handleNewDeal(); }}
+          onNewDeal={() => { void handleAddDeal(); }}
+        />
+      )}
+      {trialExhaustedOpen && (
+        <TrialExhaustedModal
+          isMobile={isMobile}
+          onClose={() => setTrialExhaustedOpen(false)}
+          onUpgrade={() => {
+            setTrialExhaustedOpen(false);
+            openPaywall("Upgrade to Investor to use AI on new deals.");
+          }}
+          onContinueWithoutAI={() => {
+            setTrialExhaustedOpen(false);
+            void insertNewDeal(true);
+          }}
+        />
+      )}
+      {dealLimitOpen && (
+        <DealLimitModal
+          isMobile={isMobile}
+          onClose={() => setDealLimitOpen(false)}
+          onUpgrade={() => {
+            setDealLimitOpen(false);
+            openPaywall("Unlimited deals with FlipLogic AI Investor.");
+          }}
         />
       )}
       <PaywallModal
