@@ -3438,6 +3438,7 @@ export default function App() {
           }}
           onManageDeals={() => {
             setDealLimitOpen(false);
+            setSidebarOpen(false);
             setShowSettings(true);
           }}
         />
