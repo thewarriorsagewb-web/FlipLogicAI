@@ -22,8 +22,16 @@ Deno.serve(async (req: Request) => {
 
   try {
     const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY");
+    const portalConfigId = Deno.env.get("STRIPE_PORTAL_CONFIG_ID");
     if (!STRIPE_SECRET_KEY) {
       throw new Error("STRIPE_SECRET_KEY not configured");
+    }
+    if (!portalConfigId?.trim()) {
+      console.error("create-portal-session missing STRIPE_PORTAL_CONFIG_ID");
+      return new Response(JSON.stringify({ error: "Portal configuration not set. Contact support." }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -84,6 +92,7 @@ Deno.serve(async (req: Request) => {
       const portalSession = await stripe.billingPortal.sessions.create({
         customer: stripeCustomerId,
         return_url: "https://fliplogic.ai/?portal=return",
+        configuration: portalConfigId,
       });
 
       return new Response(JSON.stringify({ url: portalSession.url }), {
