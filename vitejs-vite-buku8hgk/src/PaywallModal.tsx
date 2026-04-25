@@ -7,10 +7,16 @@ const overlay: CSSProperties = {
   zIndex: 2000,
   background: "rgba(0,0,0,0.88)",
   display: "flex",
+  flexDirection: "column",
   alignItems: "center",
-  justifyContent: "center",
-  padding: 20,
+  justifyContent: "flex-start",
+  paddingTop: "max(20px, env(safe-area-inset-top, 0px))",
+  paddingLeft: 20,
+  paddingRight: 20,
+  paddingBottom: "max(20px, env(safe-area-inset-bottom, 0px))",
+  minHeight: "100dvh",
   overflowY: "auto",
+  WebkitOverflowScrolling: "touch",
   boxSizing: "border-box",
 };
 
@@ -70,9 +76,16 @@ export function PaywallModal({
   };
 
   return (
-    <div style={overlay} role="dialog" aria-modal="true" aria-labelledby="paywall-title">
+    <div
+      style={overlay}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="paywall-title"
+      onClick={onClose}
+    >
       <style>{`@keyframes paySpin { to { transform: rotate(360deg); } }`}</style>
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
           background: "#0f172a",
           border: "1px solid #1e293b",
@@ -82,6 +95,8 @@ export function PaywallModal({
           width: "100%",
           boxSizing: "border-box",
           position: "relative",
+          maxHeight: "min(calc(100dvh - max(40px, env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px))), 900px)",
+          overflowY: "auto",
         }}
       >
         <button

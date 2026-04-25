@@ -1999,7 +1999,7 @@ function SettingsPage({
         </button>
         {subscriptionToast ? <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 10 }}>{subscriptionToast}</div> : null}
       </div>
-      <div style={section}>
+      <div id="settings-manage-deals-section" style={section}>
         <div style={heading}>Manage Deals</div>
         {deals.length === 0 ? (
           <div style={{ fontSize: 13, color: "#64748b" }}>No deals yet.</div>
@@ -2263,6 +2263,7 @@ export default function App() {
   const [paywallReason, setPaywallReason] = useState("");
   const [activityToast, setActivityToast] = useState<{ text: string; ms: number } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [scrollToManageDeals, setScrollToManageDeals] = useState(false);
   const [dealPendingDelete, setDealPendingDelete] = useState<Deal | null>(null);
   const [trialExhaustedOpen, setTrialExhaustedOpen] = useState(false);
   const [dealLimitOpen, setDealLimitOpen] = useState(false);
@@ -2280,6 +2281,15 @@ export default function App() {
     setPaywallReason(reason);
     setPaywallOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (!showSettings || !scrollToManageDeals) return;
+    const t = window.setTimeout(() => {
+      document.getElementById("settings-manage-deals-section")?.scrollIntoView({ block: "start", behavior: "smooth" });
+      setScrollToManageDeals(false);
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, [showSettings, scrollToManageDeals]);
 
   const canUseAI = useCallback(
     (deal: AIGateDeal) => {
@@ -3440,6 +3450,7 @@ export default function App() {
             setDealLimitOpen(false);
             setSidebarOpen(false);
             setShowSettings(true);
+            setScrollToManageDeals(true);
           }}
         />
       )}
