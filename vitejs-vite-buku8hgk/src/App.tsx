@@ -1903,7 +1903,8 @@ function SettingsPage({
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [updatingPassword, setUpdatingPassword] = useState(false);
 
-  const [subscriptionToast, setSubscriptionToast] = useState("");
+  const [openingPortal, setOpeningPortal] = useState(false);
+  const [portalError, setPortalError] = useState("");
 
   const updatePassword = async () => {
     setPasswordError("");
@@ -1986,18 +1987,49 @@ function SettingsPage({
         </div>
         <button
           type="button"
+          disabled={openingPortal}
           onClick={() => {
-            if (isInvestor) {
-              setSubscriptionToast("Stripe Customer Portal coming soon");
+            if (!isInvestor) {
+              onOpenPaywall();
               return;
             }
-            onOpenPaywall();
+            void (async () => {
+              setPortalError("");
+              setOpeningPortal(true);
+              try {
+                const { data: sessionData } = await supabase.auth.getSession();
+                const token = sessionData?.session?.access_token;
+                if (!token) throw new Error("No active session");
+
+                const response = await fetch(`${SUPABASE_URL}/functions/v1/create-portal-session`, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({}),
+                });
+
+                const payload = await response.json().catch(() => null) as { url?: string; error?: string; details?: string } | null;
+                if (!response.ok || !payload?.url) {
+                  throw new Error(payload?.error || payload?.details || "Failed to create portal session");
+                }
+
+                window.location.href = payload.url;
+              } catch (error) {
+                console.error("open portal error:", error);
+                setPortalError("Unable to open subscription management. Please try again or contact support.");
+                setOpeningPortal(false);
+              }
+            })();
           }}
-          style={{ background: isInvestor ? "transparent" : "#16a34a", border: "1px solid #16a34a", borderRadius: 8, color: isInvestor ? "#16a34a" : "#fff", padding: "10px 16px", minHeight: 44, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
+          style={isInvestor
+            ? { background: openingPortal ? "#1e293b" : "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: "10px 16px", minHeight: 44, fontSize: 13, fontWeight: 700, cursor: openingPortal ? "wait" : "pointer", fontFamily: "'Syne', sans-serif", opacity: openingPortal ? 0.95 : 1 }
+            : { background: "#16a34a", border: "1px solid #16a34a", borderRadius: 8, color: "#fff", padding: "10px 16px", minHeight: 44, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
         >
-          {isInvestor ? "Manage Subscription" : "Upgrade to Investor"}
+          {isInvestor ? (openingPortal ? "Opening..." : "Manage Subscription") : "Upgrade to Investor"}
         </button>
-        {subscriptionToast ? <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 10 }}>{subscriptionToast}</div> : null}
+        {portalError ? <div style={{ fontSize: 12, color: "#f87171", marginTop: 10 }}>{portalError}</div> : null}
       </div>
       <div id="settings-manage-deals-section" style={section}>
         <div style={heading}>Manage Deals</div>
@@ -2474,6 +2506,7 @@ export default function App() {
     if (!user || typeof window === "undefined") return;
     const sp = new URLSearchParams(window.location.search);
     const c = sp.get("checkout");
+    const portal = sp.get("portal");
     if (c === "success") {
       setActivityToast({ text: "Welcome to FlipLogic AI Investor!", ms: 5000 });
       void refetchSubscription();
@@ -2486,6 +2519,13 @@ export default function App() {
       setActivityToast({ text: "Payment was cancelled", ms: 3000 });
       const u = new URL(window.location.href);
       u.searchParams.delete("checkout");
+      const path = u.pathname + (u.search || "") + u.hash;
+      window.history.replaceState({}, "", path);
+    } else if (portal === "return") {
+      setActivityToast({ text: "Welcome back!", ms: 3000 });
+      void refetchSubscription();
+      const u = new URL(window.location.href);
+      u.searchParams.delete("portal");
       const path = u.pathname + (u.search || "") + u.hash;
       window.history.replaceState({}, "", path);
     }
