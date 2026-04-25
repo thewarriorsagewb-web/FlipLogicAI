@@ -301,7 +301,7 @@ function useIsMobile() {
 }
 
 // ─── Auth Screen ──────────────────────────────────────────────────────────────
-function AuthScreen({ onAuth }: { onAuth: () => void }) {
+function AuthScreen({ onAuth, onForgotPassword }: { onAuth: () => void; onForgotPassword: () => void }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -366,13 +366,22 @@ function AuthScreen({ onAuth }: { onAuth: () => void }) {
             style={{ width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
         </div>
 
-        <div style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 10 }}>
           <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Password</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
             placeholder="••••••••"
             style={{ width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
         </div>
+        {mode === "signin" && (
+          <button
+            type="button"
+            onClick={onForgotPassword}
+            style={{ background: "transparent", border: "none", color: "#60a5fa", fontSize: 12, cursor: "pointer", padding: 0, marginBottom: 14, fontFamily: "'Syne', sans-serif" }}
+          >
+            Forgot password?
+          </button>
+        )}
 
         {error && <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 14 }}>{error}</div>}
         {message && <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#22c55e", marginBottom: 14 }}>{message}</div>}
@@ -385,6 +394,131 @@ function AuthScreen({ onAuth }: { onAuth: () => void }) {
         <div style={{ marginTop: 20, fontSize: 11, color: "#334155", textAlign: "center", lineHeight: 1.6 }}>
           Your deals are encrypted and synced across all your devices.
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [sentTo, setSentTo] = useState("");
+
+  const sendReset = async () => {
+    const trimmed = email.trim();
+    if (!trimmed || !/^\S+@\S+\.\S+$/.test(trimmed)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(trimmed, {
+        redirectTo: `${window.location.origin}/#type=recovery`,
+      });
+      if (resetError) throw resetError;
+      setSentTo(trimmed);
+    } catch (e: any) {
+      setError(e?.message || "Could not send reset link.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", padding: "16px 12px", boxSizing: "border-box" }}>
+      <div style={{ width: "100%", maxWidth: 420, padding: 28, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12, boxSizing: "border-box" }}>
+        <div style={{ fontSize: 22, fontWeight: 800, color: "#f1f5f9", marginBottom: 8 }}>Reset your password</div>
+        <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.5, marginBottom: 18 }}>Enter your email and we&apos;ll send you a link to reset your password.</div>
+        {!sentTo ? (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendReset()}
+                placeholder="you@example.com"
+                style={{ width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+              />
+            </div>
+            {error ? <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 12 }}>{error}</div> : null}
+            <button
+              type="button"
+              onClick={sendReset}
+              disabled={loading}
+              style={{ width: "100%", background: loading ? "#1e293b" : "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: "12px 0", minHeight: 44, fontSize: 13, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 10 }}
+            >
+              {loading ? "Sending..." : "Send reset link"}
+            </button>
+          </>
+        ) : (
+          <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#22c55e", marginBottom: 12 }}>
+            Check your email. We&apos;ve sent a password reset link to {sentTo}.
+          </div>
+        )}
+        <button type="button" onClick={onBack} style={{ background: "transparent", border: "none", color: "#60a5fa", fontSize: 12, cursor: "pointer", padding: 0, fontFamily: "'Syne', sans-serif" }}>
+          ← Back to sign in
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordScreen({ onDone }: { onDone: () => void }) {
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const updatePassword = async () => {
+    if (newPassword.length < 8) {
+      setError("New password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) throw updateError;
+      if (typeof window !== "undefined") {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+      setNewPassword("");
+      setConfirmPassword("");
+      onDone();
+      return true;
+    } catch (e: any) {
+      setError(e?.message || "Could not update password.");
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", padding: "16px 12px", boxSizing: "border-box" }}>
+      <div style={{ width: "100%", maxWidth: 420, padding: 28, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12, boxSizing: "border-box" }}>
+        <div style={{ fontSize: 22, fontWeight: 800, color: "#f1f5f9", marginBottom: 8 }}>Set a new password</div>
+        <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.5, marginBottom: 18 }}>Choose a new password for your account.</div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>New password</label>
+          <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" style={{ width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Confirm new password</label>
+          <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void updatePassword()} placeholder="••••••••" style={{ width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+        </div>
+        {error ? <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 12 }}>{error}</div> : null}
+        <button type="button" onClick={() => { void updatePassword(); }} disabled={loading} style={{ width: "100%", background: loading ? "#1e293b" : "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: "12px 0", minHeight: 44, fontSize: 13, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif" }}>
+          {loading ? "Updating..." : "Update password"}
+        </button>
       </div>
     </div>
   );
@@ -1665,9 +1799,9 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo, isMobi
 }
 
 // ─── Deals Sidebar ────────────────────────────────────────────────────────────
-function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmail, onSignOut, syncing, subscriptionPanel, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
+function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmail, onSignOut, onOpenSettings, syncing, subscriptionPanel, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
   deals: Deal[]; activeDealId: string; onSelect: (id: string) => void; onNew: () => boolean | Promise<boolean>; onDelete: (id: string) => void;
-  userEmail: string; onSignOut: () => void; syncing: boolean;
+  userEmail: string; onSignOut: () => void; onOpenSettings: () => void; syncing: boolean;
   subscriptionPanel?: ReactNode;
   variant?: "sidebar" | "drawer"; drawerOpen?: boolean; onCloseDrawer?: () => void;
 }) {
@@ -1739,7 +1873,125 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onDelete, userEmai
       <div style={{ padding: "12px 14px", borderTop: "1px solid #1e293b", flexShrink: 0 }}>
         <div style={{ fontSize: 11, color: syncing ? "#f59e0b" : "#22c55e", marginBottom: 6, textAlign: "center" }}>{syncing ? "⟳ Saving..." : "✓ Synced to cloud"}</div>
         <div style={{ fontSize: 11, color: "#334155", marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>{userEmail}</div>
+        <button type="button" onClick={() => { onOpenSettings(); if (isDrawer) onCloseDrawer?.(); }} style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#475569", padding: "12px 0", minHeight: 44, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8 }}>⚙ Settings</button>
         <button type="button" onClick={() => { onSignOut(); if (isDrawer) onCloseDrawer?.(); }} style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#475569", padding: "12px 0", minHeight: 44, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>Sign Out</button>
+      </div>
+    </div>
+  );
+}
+
+function SettingsPage({
+  userEmail,
+  subscription,
+  onBack,
+  onOpenPaywall,
+  onSignOut,
+}: {
+  userEmail: string;
+  subscription: ReturnType<typeof useSubscription>["subscription"];
+  onBack: () => void;
+  onOpenPaywall: () => void;
+  onSignOut: () => void;
+}) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+
+  const [subscriptionToast, setSubscriptionToast] = useState("");
+
+  const updatePassword = async () => {
+    setPasswordError("");
+    setPasswordSuccess("");
+    if (newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New password and confirmation do not match.");
+      return;
+    }
+    setUpdatingPassword(true);
+    try {
+      const { error: reauthErr } = await supabase.auth.signInWithPassword({ email: userEmail, password: currentPassword });
+      if (reauthErr) {
+        setPasswordError("Current password is incorrect");
+        return;
+      }
+      const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateErr) throw updateErr;
+      setPasswordSuccess("Password updated successfully");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (e: any) {
+      setPasswordError(e?.message || "Could not update password.");
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
+
+  const s = subscription;
+  const isInvestor = s?.status === "active" && (s.plan === "investor_monthly" || s.plan === "investor_annual");
+  const planLabel = !s || s.status === "trial"
+    ? "Free Trial"
+    : s.plan === "investor_monthly"
+      ? "Investor — Monthly"
+      : s.plan === "investor_annual"
+        ? "Investor — Annual"
+        : "Investor";
+
+  const section: CSSProperties = { background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 10, padding: 16, marginBottom: 14 };
+  const heading: CSSProperties = { fontSize: 13, fontWeight: 800, color: "#e2e8f0", marginBottom: 10, letterSpacing: "0.06em", textTransform: "uppercase" };
+  const label: CSSProperties = { display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" };
+  const input: CSSProperties = { width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 10 };
+
+  return (
+    <div style={{ maxWidth: 840 }}>
+      <button type="button" onClick={onBack} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#94a3b8", padding: "10px 14px", minHeight: 44, fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 16 }}>← Back</button>
+      <div style={section}>
+        <div style={heading}>Account</div>
+        <div style={label}>Email</div>
+        <div style={{ ...input, color: "#94a3b8", marginBottom: 0 }}>{userEmail}</div>
+      </div>
+      <div style={section}>
+        <div style={heading}>Change Password</div>
+        <label style={label}>Current password</label>
+        <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} style={input} />
+        <label style={label}>New password</label>
+        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} style={input} />
+        <label style={label}>Confirm new password</label>
+        <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} style={input} />
+        {passwordError ? <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#f87171", marginBottom: 10 }}>{passwordError}</div> : null}
+        {passwordSuccess ? <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#22c55e", marginBottom: 10 }}>{passwordSuccess}</div> : null}
+        <button type="button" onClick={() => { void updatePassword(); }} disabled={updatingPassword} style={{ background: updatingPassword ? "#1e293b" : "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: "10px 16px", minHeight: 44, fontSize: 13, fontWeight: 700, cursor: updatingPassword ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif" }}>{updatingPassword ? "Updating..." : "Update Password"}</button>
+      </div>
+      <div style={section}>
+        <div style={heading}>Subscription</div>
+        <div style={{ fontSize: 13, color: "#f1f5f9", marginBottom: 8 }}>Current plan: <span style={{ color: "#60a5fa", fontWeight: 700 }}>{planLabel}</span></div>
+        <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>
+          {isInvestor ? "Unlimited AI analyses" : `${s?.trial_deals_used ?? 0} of ${s?.trial_deals_limit ?? 5} AI analyses used`}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (isInvestor) {
+              setSubscriptionToast("Stripe Customer Portal coming soon");
+              return;
+            }
+            onOpenPaywall();
+          }}
+          style={{ background: isInvestor ? "transparent" : "#16a34a", border: "1px solid #16a34a", borderRadius: 8, color: isInvestor ? "#16a34a" : "#fff", padding: "10px 16px", minHeight: 44, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
+        >
+          {isInvestor ? "Manage Subscription" : "Upgrade to Investor"}
+        </button>
+        {subscriptionToast ? <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 10 }}>{subscriptionToast}</div> : null}
+      </div>
+      <div style={section}>
+        <div style={{ ...heading, color: "#f87171" }}>Danger Zone</div>
+        <button type="button" onClick={onSignOut} style={{ background: "transparent", border: "1px solid #dc2626", borderRadius: 8, color: "#f87171", padding: "10px 16px", minHeight: 44, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>Sign Out</button>
       </div>
     </div>
   );
@@ -1848,7 +2100,7 @@ function DealLimitModal({ onClose, onUpgrade, onManageDeals, isMobile = false }:
 }
 
 // ─── Onboarding Modal ─────────────────────────────────────────────────────────
-function OnboardingModal({ onClose, onNewDeal, isMobile = false }: { onClose: () => void; onNewDeal: () => boolean | Promise<boolean>; isMobile?: boolean }) {
+function OnboardingModal({ onClose, onNewDeal, onSeen, isMobile = false }: { onClose: () => void; onNewDeal: () => boolean | Promise<boolean>; onSeen: () => void; isMobile?: boolean }) {
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? "16px" : "24px", overflowY: "auto" }}>
       <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12, padding: isMobile ? "24px 20px" : 40, maxWidth: 480, width: "100%", boxSizing: "border-box", maxHeight: isMobile ? "90vh" : "85vh", overflowY: "auto" }}>
@@ -1883,7 +2135,7 @@ function OnboardingModal({ onClose, onNewDeal, isMobile = false }: { onClose: ()
         <button
           type="button"
           onClick={async () => {
-            localStorage.setItem("fliplogic_onboarding_complete", "true");
+            onSeen();
             const created = await Promise.resolve(onNewDeal());
             if (created) onClose();
           }}
@@ -1894,7 +2146,7 @@ function OnboardingModal({ onClose, onNewDeal, isMobile = false }: { onClose: ()
 
         <button
           type="button"
-          onClick={() => { localStorage.setItem("fliplogic_onboarding_complete", "true"); onClose(); }}
+          onClick={() => { onSeen(); onClose(); }}
           style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#475569", padding: isMobile ? "14px 0" : "12px 0", fontSize: isMobile ? 14 : 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
           Explore the demo first
         </button>
@@ -1907,6 +2159,8 @@ function OnboardingModal({ onClose, onNewDeal, isMobile = false }: { onClose: ()
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [activeDealId, setActiveDealId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"deal" | "ai" | "comps" | "rental" | "stress" | "scope" | "packet">("deal");
@@ -1923,6 +2177,7 @@ export default function App() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [paywallReason, setPaywallReason] = useState("");
   const [activityToast, setActivityToast] = useState<{ text: string; ms: number } | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const [trialExhaustedOpen, setTrialExhaustedOpen] = useState(false);
   const [dealLimitOpen, setDealLimitOpen] = useState(false);
 
@@ -2171,8 +2426,12 @@ export default function App() {
       setUser(session?.user ?? null);
       setAuthLoading(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setShowResetPassword(true);
+      }
       setUser(session?.user ?? null);
+      if (session?.user) setShowForgotPassword(false);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -2276,9 +2535,13 @@ export default function App() {
       setDeals(assembled);
       const nextActive = pickActiveDealIdOnLoad(assembled);
       if (nextActive) setActiveDealId(nextActive);
-      const hasSeenOnboarding = localStorage.getItem("fliplogic_onboarding_complete");
-      if (!hasSeenOnboarding) {
+      const onboardingKey = `fliplogic_onboarding_seen_${user.id}`;
+      const hasSeenOnboarding = localStorage.getItem(onboardingKey);
+      const realDealCount = assembled.filter((d) => d.id !== DEMO_DEAL_ID).length;
+      if (!hasSeenOnboarding && realDealCount === 0) {
         setShowOnboarding(true);
+      } else {
+        setShowOnboarding(false);
       }
     } catch (err) {
       console.error("Error loading deals:", err);
@@ -2542,6 +2805,7 @@ export default function App() {
     }
     setDeals([]);
     setActiveDealId("");
+    setShowSettings(false);
   };
 
   const handleAddAIToScope = (items: ScopeItem[]) => {
@@ -2568,7 +2832,20 @@ export default function App() {
     </div>
   );
 
-  if (!user) return <AuthScreen onAuth={() => {}} />;
+  if (showResetPassword) {
+    return (
+      <ResetPasswordScreen onDone={() => {
+        setShowResetPassword(false);
+        setActivityToast({ text: "Password updated. You're signed in.", ms: 5000 });
+      }} />
+    );
+  }
+
+  if (!user && showForgotPassword) {
+    return <ForgotPasswordScreen onBack={() => setShowForgotPassword(false)} />;
+  }
+
+  if (!user) return <AuthScreen onAuth={() => {}} onForgotPassword={() => setShowForgotPassword(true)} />;
 
   if (dbLoading) return (
     <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", alignItems: "center", justifyContent: "center", color: "#475569", fontFamily: "'Syne', sans-serif", fontSize: 14 }}>
@@ -2609,8 +2886,8 @@ export default function App() {
           }}
         />
       )}
-      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleAddDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="sidebar" />}
-      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleAddDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
+      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleAddDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} onOpenSettings={() => setShowSettings(true)} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="sidebar" />}
+      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={setActiveDealId} onNew={handleAddDeal} onDelete={handleDelete} userEmail={user.email} onSignOut={handleSignOut} onOpenSettings={() => setShowSettings(true)} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", minWidth: 0 }}>
         {/* Header */}
         <div style={{ background: "linear-gradient(135deg, #060b14 0%, #0d1829 100%)", borderBottom: "1px solid #1e293b", padding: isMobile ? "12px 14px" : "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
@@ -2636,6 +2913,8 @@ export default function App() {
           </div>
         </div>
 
+        {!showSettings && (
+        <>
         {/* Address */}
         <div style={{ padding: isMobile ? "12px 14px" : "10px 24px", background: "#0a0f1a", borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
           <input type="text" value={inputs.propertyAddress} onChange={(e) => set("propertyAddress")(e.target.value)} placeholder="Enter property address..."
@@ -3011,12 +3290,29 @@ export default function App() {
               onUpdateLenderInfo={(u) => updateDeal({ lenderInfo: { ...(activeDeal.lenderInfo ?? BLANK_LENDER_INFO), ...u } })} />
           )}
         </div>
+        </>
+        )}
+        {showSettings && (
+          <div style={{ padding: isMobile ? "16px 14px 24px" : "20px 24px", flex: 1, overflow: "auto" }}>
+            <SettingsPage
+              userEmail={user.email}
+              subscription={subscription}
+              onBack={() => setShowSettings(false)}
+              onOpenPaywall={() => openPaywall("Upgrade to unlock Investor plan features.")}
+              onSignOut={handleSignOut}
+            />
+          </div>
+        )}
       </div>
       {showOnboarding && (
         <OnboardingModal
           isMobile={isMobile}
           onClose={() => setShowOnboarding(false)}
           onNewDeal={handleAddDeal}
+          onSeen={() => {
+            if (!user) return;
+            localStorage.setItem(`fliplogic_onboarding_seen_${user.id}`, "true");
+          }}
         />
       )}
       {trialExhaustedOpen && (
