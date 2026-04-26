@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { AIFinding, WalkthroughCaptureMode, PendingWalkthroughJob, PropertyChanges, AnalyzeWalkthroughResponse } from "./walkthroughTypes";
 import { normalizePropertyChanges } from "./walkthroughTypes";
@@ -300,6 +301,80 @@ function useIsMobile() {
   return isMobile;
 }
 
+const DEFAULT_PASSWORD_FIELD_INPUT_STYLE: CSSProperties = {
+  width: "100%",
+  background: "#060b14",
+  border: "1px solid #1e293b",
+  borderRadius: 6,
+  color: "#f1f5f9",
+  fontSize: 14,
+  outline: "none",
+  boxSizing: "border-box",
+};
+
+function PasswordFieldWithVisibilityToggle({
+  value,
+  onChange,
+  onKeyDown,
+  placeholder,
+  inputStyle,
+}: {
+  value: string;
+  onChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  onKeyDown?: (e: KeyboardEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  inputStyle?: CSSProperties;
+}) {
+  const [visible, setVisible] = useState(false);
+  const [toggleFocused, setToggleFocused] = useState(false);
+  const inputMerged: CSSProperties = {
+    ...DEFAULT_PASSWORD_FIELD_INPUT_STYLE,
+    ...inputStyle,
+    marginBottom: 0,
+    padding: "10px 48px 10px 12px",
+  };
+  return (
+    <div style={{ position: "relative", width: "100%" }}>
+      <input
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        style={inputMerged}
+      />
+      <button
+        type="button"
+        aria-label={visible ? "Hide password" : "Show password"}
+        onClick={() => setVisible((v) => !v)}
+        onFocus={() => setToggleFocused(true)}
+        onBlur={() => setToggleFocused(false)}
+        style={{
+          position: "absolute",
+          right: 2,
+          top: "50%",
+          transform: "translateY(-50%)",
+          minWidth: 44,
+          minHeight: 44,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          borderRadius: 6,
+          zIndex: 1,
+          color: visible ? "#475569" : "#94a3b8",
+          boxShadow: toggleFocused ? "0 0 0 2px rgba(59, 130, 246, 0.45)" : "none",
+        }}
+      >
+        {visible ? <EyeOff size={22} strokeWidth={2} color="currentColor" /> : <Eye size={22} strokeWidth={2} color="currentColor" />}
+      </button>
+    </div>
+  );
+}
+
 // ─── Auth Screen ──────────────────────────────────────────────────────────────
 function AuthScreen({ onAuth, onForgotPassword }: { onAuth: () => void; onForgotPassword: () => void }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -369,10 +444,12 @@ function AuthScreen({ onAuth, onForgotPassword }: { onAuth: () => void; onForgot
 
         <div style={{ marginBottom: 10 }}>
           <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Password</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+          <PasswordFieldWithVisibilityToggle
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
             placeholder="••••••••"
-            style={{ width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+          />
         </div>
         {mode === "signin" && (
           <button
@@ -522,11 +599,16 @@ function ResetPasswordScreen({ onDone }: { onDone: () => void }) {
         <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.5, marginBottom: 18 }}>Choose a new password for your account.</div>
         <div style={{ marginBottom: 12 }}>
           <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>New password</label>
-          <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" style={{ width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+          <PasswordFieldWithVisibilityToggle value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" />
         </div>
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>Confirm new password</label>
-          <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void updatePassword()} placeholder="••••••••" style={{ width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+          <PasswordFieldWithVisibilityToggle
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void updatePassword()}
+            placeholder="••••••••"
+          />
         </div>
         {error ? <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 12 }}>{error}</div> : null}
         <button type="button" onClick={() => { void updatePassword(); }} disabled={loading} style={{ width: "100%", background: loading ? "#1e293b" : "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: "12px 0", minHeight: 44, fontSize: 13, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif" }}>
@@ -2073,6 +2155,16 @@ function SettingsPage({
   const heading: CSSProperties = { fontSize: 13, fontWeight: 800, color: "#e2e8f0", marginBottom: 10, letterSpacing: "0.06em", textTransform: "uppercase" };
   const label: CSSProperties = { display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" };
   const input: CSSProperties = { width: "100%", background: "#060b14", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 10 };
+  const settingsPasswordFieldStyle: CSSProperties = {
+    width: "100%",
+    background: "#060b14",
+    border: "1px solid #1e293b",
+    borderRadius: 6,
+    color: "#f1f5f9",
+    fontSize: 14,
+    outline: "none",
+    boxSizing: "border-box",
+  };
   const formatSpecSummary = (deal: Deal) => {
     const bits: string[] = [];
     if (deal.subjectBedrooms > 0) bits.push(`${Math.round(deal.subjectBedrooms)} bed`);
@@ -2092,11 +2184,17 @@ function SettingsPage({
       <div style={section}>
         <div style={heading}>Change Password</div>
         <label style={label}>Current password</label>
-        <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} style={input} />
+        <div style={{ marginBottom: 10 }}>
+          <PasswordFieldWithVisibilityToggle value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} inputStyle={settingsPasswordFieldStyle} />
+        </div>
         <label style={label}>New password</label>
-        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} style={input} />
+        <div style={{ marginBottom: 10 }}>
+          <PasswordFieldWithVisibilityToggle value={newPassword} onChange={(e) => setNewPassword(e.target.value)} inputStyle={settingsPasswordFieldStyle} />
+        </div>
         <label style={label}>Confirm new password</label>
-        <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} style={input} />
+        <div style={{ marginBottom: 10 }}>
+          <PasswordFieldWithVisibilityToggle value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} inputStyle={settingsPasswordFieldStyle} />
+        </div>
         {passwordError ? <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#f87171", marginBottom: 10 }}>{passwordError}</div> : null}
         {passwordSuccess ? <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#22c55e", marginBottom: 10 }}>{passwordSuccess}</div> : null}
         <button type="button" onClick={() => { void updatePassword(); }} disabled={updatingPassword} style={{ background: updatingPassword ? "#1e293b" : "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: "10px 16px", minHeight: 44, fontSize: 13, fontWeight: 700, cursor: updatingPassword ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif" }}>{updatingPassword ? "Updating..." : "Update Password"}</button>
