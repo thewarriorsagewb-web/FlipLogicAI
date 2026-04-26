@@ -398,20 +398,16 @@ function AuthScreen({ onAuth, onForgotPassword }: { onAuth: () => void; onForgot
     setLoading(true); setError(""); setMessage(""); setTermsRequiredError(false);
     try {
       if (mode === "signup") {
-        const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              marketing_opt_in: marketingOptIn,
+            },
+          },
+        });
         if (signUpError) throw signUpError;
-        if (data.user && marketingOptIn) {
-          const { error: subError } = await supabase
-            .from("subscriptions")
-            .update({
-              marketing_emails_opted_in: true,
-              marketing_opt_in_at: new Date().toISOString(),
-            })
-            .eq("user_id", data.user.id);
-          if (subError) {
-            console.error("subscriptions marketing opt-in update:", subError);
-          }
-        }
         setMessage("Account created! Please check your email to verify your account, then sign in below.");
         setMode("signin");
         setTermsAgreed(false);
