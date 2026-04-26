@@ -1900,7 +1900,44 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, on
       {isDrawer && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: "#f1f5f9", letterSpacing: "0.06em" }}>MY DEALS</span>
-          <button type="button" aria-label="Close menu" onClick={() => onCloseDrawer?.()} style={{ minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#94a3b8", fontSize: 22, lineHeight: 1, cursor: "pointer" }}>×</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              type="button"
+              aria-label="Help and support"
+              onClick={() => { onOpenHelp(); onCloseDrawer?.(); }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              onMouseDown={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
+              onMouseUp={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+              style={{ minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#94a3b8", fontSize: 21, lineHeight: 1, cursor: "pointer" }}
+            >
+              ?
+            </button>
+            <button
+              type="button"
+              aria-label="Open settings"
+              onClick={() => { onOpenSettings(); onCloseDrawer?.(); }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              onMouseDown={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
+              onMouseUp={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+              style={{ minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#94a3b8", fontSize: 21, lineHeight: 1, cursor: "pointer" }}
+            >
+              ⚙
+            </button>
+            <button
+              type="button"
+              aria-label="Close menu"
+              onClick={() => onCloseDrawer?.()}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              onMouseDown={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
+              onMouseUp={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+              style={{ minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#94a3b8", fontSize: 22, lineHeight: 1, cursor: "pointer" }}
+            >
+              ×
+            </button>
+          </div>
         </div>
       )}
       <div style={{ padding: isDrawer ? "12px 14px 10px" : "16px 14px 10px", borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
@@ -1942,30 +1979,6 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, on
       </div>
       <div style={{ padding: "12px 14px", borderTop: "1px solid #1e293b", flexShrink: 0 }}>
         <div style={{ fontSize: 10, color: syncing ? "#a3a3a3" : "#94a3b8", marginBottom: 8, textAlign: "center" }}>{syncing ? "⟳ Saving..." : "✓ Synced to cloud"}</div>
-      </div>
-      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid #1e293b", flexShrink: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-        <button
-          type="button"
-          onClick={() => { onOpenHelp(); if (isDrawer) onCloseDrawer?.(); }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "#0f172a"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-          onMouseDown={(e) => { e.currentTarget.style.background = "#111c31"; }}
-          onMouseUp={(e) => { e.currentTarget.style.background = "#0f172a"; }}
-          style={{ width: "100%", minHeight: 44, background: "transparent", border: "none", borderRadius: 6, color: "#94a3b8", padding: "0 16px", fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif", textAlign: "left" }}
-        >
-          Help & Support
-        </button>
-        <button
-          type="button"
-          onClick={() => { onOpenSettings(); if (isDrawer) onCloseDrawer?.(); }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "#0f172a"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-          onMouseDown={(e) => { e.currentTarget.style.background = "#111c31"; }}
-          onMouseUp={(e) => { e.currentTarget.style.background = "#0f172a"; }}
-          style={{ width: "100%", minHeight: 44, background: "transparent", border: "none", borderRadius: 6, color: "#94a3b8", padding: "0 16px", fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif", textAlign: "left" }}
-        >
-          Settings
-        </button>
       </div>
     </div>
   );
