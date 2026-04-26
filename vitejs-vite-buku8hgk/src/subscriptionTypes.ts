@@ -11,7 +11,11 @@ export interface Subscription {
   status: SubscriptionStatus;
   trial_deals_used: number;
   trial_deals_limit: number;
+  cancel_at_period_end: boolean;
+  cancel_at: string | null;
+  canceled_at: string | null;
   current_period_end: string | null;
+  current_period_start: string | null;
   monthly_ai_deals_count: number;
   monthly_ai_deals_reset_at: string | null;
   created_at?: string;

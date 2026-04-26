@@ -1946,6 +1946,10 @@ function SettingsPage({
       : s.plan === "investor_annual"
         ? "Investor — Annual"
         : "Investor";
+  const showPendingCancel = Boolean(isInvestor && s?.cancel_at_period_end && s?.cancel_at);
+  const cancelDateLabel = showPendingCancel
+    ? new Date(String(s?.cancel_at)).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
+    : "";
 
   const section: CSSProperties = { background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 10, padding: 16, marginBottom: 14 };
   const heading: CSSProperties = { fontSize: 13, fontWeight: 800, color: "#e2e8f0", marginBottom: 10, letterSpacing: "0.06em", textTransform: "uppercase" };
@@ -1985,6 +1989,12 @@ function SettingsPage({
         <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>
           {isInvestor ? "Unlimited AI analyses" : `${s?.trial_deals_used ?? 0} of ${s?.trial_deals_limit ?? 5} AI analyses used`}
         </div>
+        {showPendingCancel ? (
+          <div style={{ background: "rgba(255, 165, 0, 0.1)", border: "1px solid #FFA500", borderRadius: 8, padding: "12px 14px", marginBottom: 10 }}>
+            <div style={{ fontSize: 13, color: "#FFA500", fontWeight: 700, marginBottom: 4 }}>⚠ Subscription cancels on {cancelDateLabel}</div>
+            <div style={{ fontSize: 12, color: "#94a3b8" }}>You&apos;ll continue to have full Investor access until this date.</div>
+          </div>
+        ) : null}
         <button
           type="button"
           disabled={openingPortal}
