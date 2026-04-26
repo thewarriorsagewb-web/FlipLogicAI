@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlipLogic AI — Terms of Service</title>
+<meta name="description" content="Terms of Service for FlipLogic AI by Data Pro Marketing LLC.">
+<style>
+:root {
+  --fl-green: #1F8A4C;
+  --fl-green-light: #E8F3EC;
+  --fl-green-dark: #156237;
+  --fl-dark: #1A1A1A;
+  --fl-grey: #666666;
+  --fl-grey-light: #999999;
+  --fl-bg: #FAFBFA;
+  --fl-card: #FFFFFF;
+  --fl-border: #E5E7E5;
+  --fl-callout-bg: #F4F8F5;
+  --fl-warn-bg: #FEF9E7;
+  --fl-warn-border: #B8860B;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--fl-dark);
+  background: var(--fl-bg);
+}
+a { color: var(--fl-green); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--fl-card);
+  border-bottom: 1px solid var(--fl-border);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.header .brand { font-size: 20px; font-weight: 700; color: var(--fl-green); }
+.header .brand .sub { color: var(--fl-grey); font-weight: 400; font-size: 16px; margin-left: 8px; }
+.header .meta { font-size: 13px; color: var(--fl-grey); }
+
+.layout { max-width: 860px; margin: 0 auto; padding: 24px; }
+.content { background: var(--fl-card); border: 1px solid var(--fl-border); border-radius: 8px; padding: 40px 56px; }
+
+.hero { text-align: center; padding: 24px 0 32px 0; border-bottom: 1px solid var(--fl-border); margin-bottom: 32px; }
+.hero .title { font-size: 44px; font-weight: 800; color: var(--fl-green); margin: 0 0 6px 0; letter-spacing: -0.02em; }
+.hero .subtitle { font-size: 22px; color: var(--fl-dark); margin: 0 0 8px 0; font-weight: 500; }
+.hero .tagline { font-size: 15px; color: var(--fl-grey); font-style: italic; }
+.hero .meta-row { margin-top: 16px; font-size: 13px; color: var(--fl-grey); line-height: 1.7; }
+.hero .meta-row strong { color: var(--fl-dark); }
+
+h1 {
+  font-size: 28px;
+  color: var(--fl-green);
+  font-weight: 700;
+  margin: 32px 0 16px 0;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  scroll-margin-top: 80px;
+}
+h2 {
+  font-size: 19px;
+  color: var(--fl-dark);
+  margin: 24px 0 10px 0;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+p { margin: 0 0 14px 0; }
+ul, ol { margin: 0 0 16px 0; padding-left: 24px; }
+li { margin-bottom: 6px; }
+
+strong { font-weight: 700; }
+
+.callout {
+  background: var(--fl-callout-bg);
+  border-left: 4px solid var(--fl-green);
+  padding: 16px 20px;
+  margin: 20px 0;
+  border-radius: 4px;
+}
+.callout.warn {
+  background: var(--fl-warn-bg);
+  border-left-color: var(--fl-warn-border);
+}
+.callout-label {
+  color: var(--fl-green);
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.callout.warn .callout-label { color: var(--fl-warn-border); }
+.callout p { margin: 0; }
+.callout p + p { margin-top: 8px; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0 24px 0;
+  font-size: 15px;
+}
+th { background: var(--fl-green); color: white; text-align: left; padding: 10px 14px; font-weight: 600; font-size: 14px; }
+th:first-child { border-top-left-radius: 4px; }
+th:last-child { border-top-right-radius: 4px; }
+td { padding: 10px 14px; border-bottom: 1px solid var(--fl-border); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:nth-child(even) td { background: #FAFBFA; }
+
+.legal-emphasis {
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.toc-mini {
+  background: var(--fl-bg);
+  border: 1px solid var(--fl-border);
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin: 0 0 32px 0;
+}
+.toc-mini-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fl-grey);
+  font-weight: 600;
+  margin: 0 0 8px 0;
+}
+.toc-mini ol {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  columns: 2;
+  column-gap: 32px;
+  font-size: 14px;
+}
+.toc-mini li { margin-bottom: 4px; }
+.toc-mini a { color: var(--fl-dark); }
+
+.footer {
+  text-align: center;
+  padding: 32px 24px;
+  color: var(--fl-grey);
+  font-size: 14px;
+  border-top: 1px solid var(--fl-border);
+  margin-top: 32px;
+  background: var(--fl-card);
+}
+.footer a { color: var(--fl-green); }
+
+@media print {
+  .header { display: none; }
+  .layout { padding: 0; max-width: none; }
+  .content { border: none; padding: 0; }
+  h1 { page-break-after: avoid; }
+  table, .callout { break-inside: avoid; }
+}
+
+@media (max-width: 700px) {
+  .layout { padding: 12px; }
+  .content { padding: 24px 18px; border-radius: 6px; }
+  .hero .title { font-size: 32px; }
+  .hero .subtitle { font-size: 18px; }
+  h1 { font-size: 22px; }
+  h2 { font-size: 17px; }
+  .toc-mini ol { columns: 1; }
+  .header { padding: 12px 16px; }
+  .header .brand { font-size: 17px; }
+  .header .brand .sub { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="brand">FlipLogic AI <span class="sub">Terms of Service</span></div>
+  <div class="meta"><a href="https://fliplogic.ai">Back to fliplogic.ai</a></div>
+</header>
+
+<div class="layout">
+  <main class="content">
+
+    <div class="hero">
+      <div class="title">FlipLogic AI</div>
+      <div class="subtitle">Terms of Service</div>
+      <div class="tagline">The agreement governing your use of FlipLogic AI</div>
+      <div class="meta-row">
+        <strong>Effective Date:</strong> April 26, 2026 &nbsp;·&nbsp; <strong>Last Updated:</strong> April 26, 2026<br>
+        <strong>Data Pro Marketing LLC</strong> &nbsp;·&nbsp; A Florida Limited Liability Company &nbsp;·&nbsp; <a href="https://fliplogic.ai">fliplogic.ai</a>
+      </div>
+    </div>
+
+    
+
+    <div class="toc-mini">
+      <div class="toc-mini-title">Contents</div>
+      <ol>
+        <li><a href="#sec-1">1. Agreement to Terms</a></li>
+      <li><a href="#sec-2">2. Eligibility</a></li>
+      <li><a href="#sec-3">3. Description of the Service</a></li>
+      <li><a href="#sec-4">4. Account Registration and Security</a></li>
+      <li><a href="#sec-5">5. Subscription Plans and Pricing</a></li>
+      <li><a href="#sec-6">6. Acceptable Use</a></li>
+      <li><a href="#sec-7">7. Your Content and Data</a></li>
+      <li><a href="#sec-8">8. AI-Generated Output and Estimates</a></li>
+      <li><a href="#sec-9">9. Intellectual Property</a></li>
+      <li><a href="#sec-10">10. Third-Party Services</a></li>
+      <li><a href="#sec-11">11. Privacy</a></li>
+      <li><a href="#sec-12">12. Modifications to the Service</a></li>
+      <li><a href="#sec-13">13. Disclaimer of Warranties</a></li>
+      <li><a href="#sec-14">14. Limitation of Liability</a></li>
+      <li><a href="#sec-15">15. Indemnification</a></li>
+      <li><a href="#sec-16">16. Dispute Resolution and Mandatory Arbitration</a></li>
+      <li><a href="#sec-17">17. Governing Law and Venue</a></li>
+      <li><a href="#sec-18">18. Termination</a></li>
+      <li><a href="#sec-19">19. General Provisions</a></li>
+      <li><a href="#sec-20">20. Contact</a></li>
+      </ol>
+    </div>
+
+    <section id="sec-1">
+<h1>1. Agreement to Terms</h1>
+<p>These Terms of Service ("Terms") form a binding legal agreement between you and Data Pro Marketing LLC, a Florida limited liability company ("we," "us," "our," or "the Company"), governing your access to and use of FlipLogic AI, available at <a href="https://fliplogic.ai">fliplogic.ai</a> (the "Service").</p>
+<p>By creating an account, accessing the Service, or clicking "I agree," you confirm that you have read, understood, and agree to be bound by these Terms and by our <a href="/privacy">Privacy Policy</a>. If you do not agree, you must not use the Service.</p>
+<div class="callout warn">
+<div class="callout-label">Important Provisions</div>
+<p><strong>These Terms contain important provisions that affect your legal rights, including a mandatory arbitration clause and class action waiver in Section 16, a limitation of liability in Section 14, and a disclaimer of warranties in Section 13. Please read carefully.</strong></p>
+</div>
+</section>
+
+<section id="sec-2">
+<h1>2. Eligibility</h1>
+<p>To use the Service, you must:</p>
+<ul>
+<li>Be at least 18 years of age.</li>
+<li>Have the legal capacity to enter into a binding contract.</li>
+<li>Not be barred from using the Service under the laws of the United States or your jurisdiction.</li>
+<li>Provide accurate registration information and keep it current.</li>
+</ul>
+<p>If you are using the Service on behalf of a company or other entity, you represent that you have authority to bind that entity to these Terms.</p>
+</section>
+
+<section id="sec-3">
+<h1>3. Description of the Service</h1>
+<p>FlipLogic AI is a software-as-a-service platform that helps real estate investors analyze fix-and-flip deals. Service features include:</p>
+<ul>
+<li>Multi-source rehab cost and after-repair value (ARV) tracking with live calculations of Maximum Allowable Offer (MAO), return on investment (ROI), and other deal metrics.</li>
+<li>AI-assisted property walkthrough analysis from photos, audio, video, and combined modes.</li>
+<li>Auto-pulled sale comparables and rental comparables via third-party data providers.</li>
+<li>Stress testing, scope of work management, and lender packet generation.</li>
+<li>Cloud sync across devices.</li>
+</ul>
+<div class="callout">
+<div class="callout-label">Beta Status</div>
+<p>FlipLogic AI is currently in active beta. Features may change, be added, or be removed without notice. We do not guarantee uptime, data accuracy, or feature availability during the beta period. Use of the Service is at your own risk and discretion. Material changes will be communicated to registered users by email when reasonably practical.</p>
+</div>
+</section>
+
+<section id="sec-4">
+<h1>4. Account Registration and Security</h1>
+<p>To access most features of the Service, you must create an account by providing a valid email address and password. You agree to:</p>
+<ul>
+<li>Provide accurate, current, and complete information during registration.</li>
+<li>Maintain the confidentiality of your password.</li>
+<li>Notify us immediately at <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a> of any unauthorized access to your account.</li>
+<li>Accept responsibility for all activity that occurs under your account.</li>
+</ul>
+<p>You may not share your account credentials, transfer your account to another person, or create an account on behalf of someone else without their authorization. We reserve the right to suspend or terminate accounts that violate these provisions.</p>
+</section>
+
+<section id="sec-5">
+<h1>5. Subscription Plans and Pricing</h1>
+<h2>5.1 Free Trial</h2>
+<p>New accounts receive 5 complimentary AI deal analyses with no credit card required and no time limit. Free accounts may store up to 8 deals at a time. The 5 trial slots are consumed only on the first AI analysis of a given deal — re-analysis of an existing deal does not consume an additional slot.</p>
+
+<h2>5.2 Investor Plans</h2>
+<p>Paid Investor plans provide unlimited AI analyses, unlimited deal storage, and access to all Service features. Pricing in effect as of the Effective Date of these Terms:</p>
+<table>
+<thead><tr><th>Plan</th><th>Price</th></tr></thead>
+<tbody>
+<tr><td>Investor — Monthly</td><td>$49.00 USD per month</td></tr>
+<tr><td>Investor — Annual</td><td>$468.00 USD per year ($39/month equivalent)</td></tr>
+</tbody>
+</table>
+<p>Prices are subject to change. We will provide at least 30 days' advance notice by email of any price increase to existing subscribers. Continued subscription after the price increase takes effect constitutes acceptance of the new price.</p>
+
+<h2>5.3 Billing and Auto-Renewal</h2>
+<p>Paid subscriptions are billed in advance through Stripe, our payment processor.</p>
+<ul>
+<li>Monthly subscriptions renew automatically each month on the anniversary of your initial subscription date until canceled.</li>
+<li>Annual subscriptions renew automatically each year on the anniversary of your initial subscription date until canceled.</li>
+<li>Failed payments may result in suspension of access until payment is successfully processed.</li>
+</ul>
+
+<h2>5.4 Cancellation and Refund Policy</h2>
+<p>You may cancel your subscription at any time through the Stripe Customer Portal accessible from Settings → Subscription within the Service. Cancellation policies are as follows:</p>
+<ul>
+<li><strong>Monthly subscriptions:</strong> cancellation stops future billing. You retain access through the end of your current billing month. We do not offer pro-rated refunds for the partial month already paid.</li>
+<li><strong>Annual subscriptions:</strong> cancellation stops the auto-renewal. You retain access through the end of your current 12-month term. <strong>Annual subscriptions are non-refundable mid-term — once charged, the annual fee is committed for the full term.</strong></li>
+<li>Refunds in extraordinary circumstances (significant Service outages, billing errors, demonstrable fraud) are evaluated on a case-by-case basis. Contact <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a> with details.</li>
+<li>Plan upgrades from Monthly to Annual are processed with proration through Stripe. Annual subscribers cannot downgrade to Monthly mid-term.</li>
+</ul>
+
+<h2>5.5 Promo Codes</h2>
+<p>From time to time we may issue promotional codes that provide discounts on the Service. Promo codes are applicable to monthly subscriptions only, are limited to first-time orders per customer, and may be modified or discontinued at our discretion. Promo codes have no cash value.</p>
+</section>
+
+<section id="sec-6">
+<h1>6. Acceptable Use</h1>
+<p>You agree to use the Service only for lawful purposes and in accordance with these Terms. You will not:</p>
+<ul>
+<li>Use the Service to violate any applicable law, regulation, or third-party right.</li>
+<li>Reverse engineer, decompile, disassemble, or attempt to extract the source code of the Service.</li>
+<li>Bypass, disable, or otherwise circumvent any security or access control mechanism.</li>
+<li>Use automated means (bots, scrapers, scripts) to access the Service without our express written permission.</li>
+<li>Access the Service in a way designed to overload, disrupt, or impair its operation.</li>
+<li>Resell, sublicense, or commercially redistribute access to the Service.</li>
+<li>Upload or submit content that is unlawful, defamatory, infringing, malicious, or contains malware.</li>
+<li>Submit false or misleading information, including fraudulent property data.</li>
+<li>Use the Service to harass, defraud, or deceive others.</li>
+<li>Misrepresent your identity or affiliation with any person or entity.</li>
+</ul>
+<p>We reserve the right to investigate suspected violations and to suspend or terminate accounts engaged in prohibited conduct.</p>
+</section>
+
+<section id="sec-7">
+<h1>7. Your Content and Data</h1>
+<h2>7.1 Ownership</h2>
+<p>You retain all ownership rights in the property data, deal analyses, walkthrough recordings, photos, videos, scope items, comps, notes, and other content you submit to the Service ("Your Content").</p>
+
+<h2>7.2 License to Operate the Service</h2>
+<p>You grant us a limited, non-exclusive, worldwide, royalty-free license to host, store, process, transmit, display, and create derivative works from Your Content solely for the purpose of operating, providing, and improving the Service for your benefit. This license terminates when you delete Your Content or your account.</p>
+
+<h2>7.3 Responsibility for Your Content</h2>
+<p>You are solely responsible for Your Content and for ensuring that you have the rights necessary to submit it. You represent and warrant that:</p>
+<ul>
+<li>You own or have permission to submit all content you upload, including photos, audio, and video of properties.</li>
+<li>Your Content does not infringe any third-party intellectual property rights or privacy rights.</li>
+<li>Your Content complies with applicable law, including any laws restricting recording of audio or video.</li>
+</ul>
+</section>
+
+<section id="sec-8">
+<h1>8. AI-Generated Output and Estimates</h1>
+<div class="callout warn">
+<div class="callout-label">Critical Disclaimer</div>
+<p><strong>AI-generated findings, cost estimates, ARV calculations, comp valuations, and other outputs from the Service are estimates and informational tools only. They are not professional appraisals, contractor bids, legal advice, financial advice, or guarantees of value, condition, or outcome. You are solely responsible for your investment decisions and for verifying any data, estimate, or finding before relying on it for a real-world transaction.</strong></p>
+</div>
+<p>The Service uses artificial intelligence and third-party data sources to generate property analyses. AI outputs are inherently probabilistic and may contain errors, omissions, or inaccuracies. Comparable sales and rental data are provided by third parties and we do not warrant their accuracy or timeliness. You acknowledge that:</p>
+<ul>
+<li>AI scope-of-work findings are estimates that should be verified by licensed contractors before any commitment of capital.</li>
+<li>AI cost estimates are approximations based on regional and historical data, not binding price quotes.</li>
+<li>ARV estimates derived from comparable sales are mathematical calculations from third-party data, not licensed real estate appraisals.</li>
+<li>Deal scores (HOT, WARM, COLD, DEAD) are heuristic ratings, not investment recommendations.</li>
+<li>Property change detection and other AI features may misinterpret user input.</li>
+</ul>
+<p>Real estate investing involves substantial financial risk. We strongly recommend that all material investment decisions be reviewed with licensed professionals (real estate appraisers, licensed contractors, accountants, attorneys, financial advisors) before commitment of capital.</p>
+</section>
+
+<section id="sec-9">
+<h1>9. Intellectual Property</h1>
+<h2>9.1 Our Intellectual Property</h2>
+<p>The Service, including all software, designs, text, graphics, the FlipLogic AI name and logo, the multi-source switching architecture, the deal scoring methodology, and all other materials provided by us ("Our IP"), is owned by Data Pro Marketing LLC or our licensors and is protected by United States and international intellectual property laws.</p>
+
+<h2>9.2 Limited License to You</h2>
+<p>Subject to your compliance with these Terms, we grant you a limited, non-exclusive, non-transferable, revocable license to access and use the Service for your personal or internal business purposes. This license does not transfer any ownership rights and may be revoked at any time.</p>
+
+<h2>9.3 Restrictions</h2>
+<p>You may not copy, modify, distribute, sell, lease, sublicense, or create derivative works from Our IP, except as expressly permitted by these Terms or applicable law.</p>
+
+<h2>9.4 Feedback</h2>
+<p>If you submit feedback, suggestions, or ideas about the Service, you grant us a perpetual, irrevocable, royalty-free, worldwide license to use that feedback for any purpose, including improving the Service. You will not be entitled to compensation for feedback.</p>
+</section>
+
+<section id="sec-10">
+<h1>10. Third-Party Services</h1>
+<p>The Service depends on third-party providers including Stripe, Supabase, Netlify, Anthropic, Deepgram, RentCast, and ImprovMX. Your use of the Service is also subject to the terms and policies of these providers, where applicable. We are not responsible for the acts, omissions, or content of third-party providers, but we will use commercially reasonable efforts to maintain functional integrations with them.</p>
+</section>
+
+<section id="sec-11">
+<h1>11. Privacy</h1>
+<p>Your privacy is important to us. Our <a href="/privacy">Privacy Policy</a>, available at fliplogic.ai/privacy, describes how we collect, use, and protect your information and is incorporated into these Terms by reference.</p>
+</section>
+
+<section id="sec-12">
+<h1>12. Modifications to the Service</h1>
+<p>We may modify, update, suspend, or discontinue any part of the Service at any time, with or without notice. We will use reasonable efforts to notify registered users of material changes that adversely affect Service functionality. We are not liable to you or any third party for modifications, suspensions, or discontinuance of the Service.</p>
+</section>
+
+<section id="sec-13">
+<h1>13. Disclaimer of Warranties</h1>
+<p><strong class="legal-emphasis">The Service is provided "as is" and "as available," without warranties of any kind, either express or implied.</strong> To the fullest extent permitted by applicable law, we disclaim all warranties, including but not limited to:</p>
+<ul>
+<li>Implied warranties of merchantability, fitness for a particular purpose, and non-infringement.</li>
+<li>Warranties that the Service will be uninterrupted, error-free, secure, or free from viruses or other harmful components.</li>
+<li>Warranties that AI-generated outputs, comp data, or other Service results will be accurate, complete, or suitable for any particular purpose.</li>
+<li>Warranties regarding the conduct of third-party data providers, payment processors, or other vendors.</li>
+</ul>
+<p>Some jurisdictions do not allow the exclusion of implied warranties, so some of the above exclusions may not apply to you.</p>
+</section>
+
+<section id="sec-14">
+<h1>14. Limitation of Liability</h1>
+<p><strong class="legal-emphasis">To the maximum extent permitted by applicable law,</strong> in no event will Data Pro Marketing LLC, its officers, members, employees, agents, or affiliates be liable to you for:</p>
+<ul>
+<li>Any indirect, incidental, special, consequential, exemplary, or punitive damages.</li>
+<li>Loss of profits, revenue, business opportunities, goodwill, or anticipated savings.</li>
+<li>Loss or corruption of data.</li>
+<li>Damages arising from real estate investment decisions, deals pursued or declined, contractor disputes, lender disputes, or other transactions made in reliance on the Service.</li>
+<li>Damages arising from AI errors, comp data inaccuracies, or third-party service failures.</li>
+</ul>
+<p><strong>Aggregate liability cap:</strong> To the extent that liability cannot be excluded under applicable law, our total cumulative liability arising out of or related to these Terms or the Service is limited to the greater of (a) the total amount you paid to us in the twelve (12) months preceding the event giving rise to the liability, or (b) one hundred U.S. dollars ($100).</p>
+<p>These limitations apply regardless of the legal theory on which any claim is based (contract, tort, strict liability, or otherwise) and even if we have been advised of the possibility of such damages.</p>
+</section>
+
+<section id="sec-15">
+<h1>15. Indemnification</h1>
+<p>You agree to indemnify, defend, and hold harmless Data Pro Marketing LLC, its officers, members, employees, agents, and affiliates from and against any and all claims, liabilities, damages, losses, costs, and expenses (including reasonable attorneys' fees) arising out of or related to:</p>
+<ul>
+<li>Your use of the Service.</li>
+<li>Your violation of these Terms or any applicable law.</li>
+<li>Your Content, including any claim that Your Content infringes a third party's rights.</li>
+<li>Your real estate investment decisions or transactions.</li>
+<li>Your interactions with third parties (lenders, contractors, partners, sellers) related to deals analyzed using the Service.</li>
+</ul>
+<p>We reserve the right to assume the exclusive defense and control of any matter subject to indemnification by you, in which case you agree to cooperate fully with our defense.</p>
+</section>
+
+<section id="sec-16">
+<h1>16. Dispute Resolution and Mandatory Arbitration</h1>
+<div class="callout warn">
+<div class="callout-label">Mandatory Arbitration &amp; Class Action Waiver</div>
+<p><strong>Read this section carefully. It requires you to resolve disputes with us through individual binding arbitration and waives your right to participate in class actions or jury trials. This is a material term of these Terms.</strong></p>
+</div>
+
+<h2>16.1 Informal Resolution</h2>
+<p>Before filing any formal claim, you agree to first attempt to resolve the dispute informally by contacting us at <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a>. We will attempt to resolve the dispute in good faith within 30 days of receipt of your notice.</p>
+
+<h2>16.2 Binding Arbitration</h2>
+<p>If informal resolution does not resolve the dispute, any claim, dispute, or controversy arising out of or relating to these Terms or the Service will be resolved exclusively through final and binding arbitration, except as set forth below.</p>
+<ul>
+<li>The arbitration will be administered by the American Arbitration Association (AAA) under its Consumer Arbitration Rules.</li>
+<li>The arbitration will be conducted in Florida, or at the option of the consumer, by telephone, video, or written submissions.</li>
+<li>The arbitrator's decision will be final and binding, and judgment may be entered in any court of competent jurisdiction.</li>
+<li>Each party will bear its own attorneys' fees and costs, except where the arbitrator awards otherwise under applicable law.</li>
+</ul>
+
+<h2>16.3 Class Action Waiver</h2>
+<p><strong class="legal-emphasis">You and Data Pro Marketing LLC agree that each may bring claims against the other only in an individual capacity and not as a plaintiff or class member in any purported class, collective, or representative proceeding.</strong> The arbitrator may not consolidate more than one person's claims and may not preside over any form of representative proceeding.</p>
+
+<h2>16.4 Exceptions</h2>
+<p>Notwithstanding the above, either party may:</p>
+<ul>
+<li>Bring a claim in small claims court if the claim qualifies.</li>
+<li>Seek injunctive or equitable relief in court for intellectual property infringement or breach of confidentiality obligations.</li>
+</ul>
+
+<h2>16.5 Opt-Out</h2>
+<p>You may opt out of this arbitration agreement by sending written notice to <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a> within 30 days of first accepting these Terms. The notice must include your name, email address, and a clear statement that you wish to opt out of arbitration. Opting out will not affect any other provision of these Terms.</p>
+</section>
+
+<section id="sec-17">
+<h1>17. Governing Law and Venue</h1>
+<p>These Terms are governed by and construed in accordance with the laws of the State of Florida, United States, without regard to its conflict-of-laws principles. Subject to Section 16, any judicial action permitted by these Terms must be brought exclusively in the state or federal courts located in Florida, and you consent to the personal jurisdiction of such courts.</p>
+</section>
+
+<section id="sec-18">
+<h1>18. Termination</h1>
+<h2>18.1 By You</h2>
+<p>You may terminate your account at any time by canceling your subscription (if any) and requesting account deletion at <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a>.</p>
+
+<h2>18.2 By Us</h2>
+<p>We may suspend or terminate your access to the Service at any time, with or without notice, if we believe in our reasonable discretion that you have violated these Terms, applicable law, or engaged in conduct harmful to us, our other users, or third parties. We may also terminate the Service entirely with 30 days' advance notice to registered users.</p>
+
+<h2>18.3 Effect of Termination</h2>
+<p>Upon termination of your account:</p>
+<ul>
+<li>Your right to access the Service ceases immediately.</li>
+<li>Your data will be retained or deleted as described in our Privacy Policy.</li>
+<li>Sections of these Terms that by their nature should survive termination (including but not limited to Sections 7, 9, 13, 14, 15, 16, and 17) will survive.</li>
+</ul>
+</section>
+
+<section id="sec-19">
+<h1>19. General Provisions</h1>
+<h2>19.1 Entire Agreement</h2>
+<p>These Terms, together with our Privacy Policy, constitute the entire agreement between you and Data Pro Marketing LLC regarding the Service and supersede any prior agreements or understandings.</p>
+
+<h2>19.2 Severability</h2>
+<p>If any provision of these Terms is held to be invalid, illegal, or unenforceable, the remaining provisions will remain in full force and effect, and the unenforceable provision will be modified to the minimum extent necessary to make it enforceable while preserving its intent.</p>
+
+<h2>19.3 No Waiver</h2>
+<p>Our failure to enforce any right or provision of these Terms is not a waiver of that right or provision.</p>
+
+<h2>19.4 Assignment</h2>
+<p>You may not assign or transfer these Terms or any rights or obligations hereunder without our prior written consent. We may assign these Terms freely, including to a successor in interest in connection with a merger, acquisition, or sale of assets.</p>
+
+<h2>19.5 Force Majeure</h2>
+<p>We are not liable for any failure or delay in performance caused by events beyond our reasonable control, including natural disasters, acts of war, terrorism, civil unrest, governmental actions, internet or utility outages, and failures of third-party providers.</p>
+
+<h2>19.6 Notices</h2>
+<p>We may provide notices to you by email to the address associated with your account or by posting in the Service. You may provide notices to us at <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a>.</p>
+
+<h2>19.7 Updates to These Terms</h2>
+<p>We may update these Terms as the Service evolves. Material changes will be communicated to registered users by email at least 14 days before they take effect. Continued use of the Service after the effective date constitutes acceptance. Where required by law, we will obtain your express consent to material changes.</p>
+</section>
+
+<section id="sec-20">
+<h1>20. Contact</h1>
+<p>Questions about these Terms should be directed to:</p>
+<p>
+  <strong>Data Pro Marketing LLC</strong><br>
+  Email: <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a><br>
+  Web: <a href="https://fliplogic.ai">fliplogic.ai</a>
+</p>
+</section>
+
+  </main>
+</div>
+
+<footer class="footer">
+  <p><strong>FlipLogic AI</strong> · operated by Data Pro Marketing LLC</p>
+  <p><a href="https://fliplogic.ai">fliplogic.ai</a> · <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a> · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a></p>
+  <p>© 2026 Data Pro Marketing LLC. All rights reserved.</p>
+</footer>
+
+</body>
+</html>

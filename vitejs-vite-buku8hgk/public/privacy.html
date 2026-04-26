@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlipLogic AI — Privacy Policy</title>
+<meta name="description" content="Privacy Policy for FlipLogic AI by Data Pro Marketing LLC.">
+<style>
+:root {
+  --fl-green: #1F8A4C;
+  --fl-green-light: #E8F3EC;
+  --fl-green-dark: #156237;
+  --fl-dark: #1A1A1A;
+  --fl-grey: #666666;
+  --fl-grey-light: #999999;
+  --fl-bg: #FAFBFA;
+  --fl-card: #FFFFFF;
+  --fl-border: #E5E7E5;
+  --fl-callout-bg: #F4F8F5;
+  --fl-warn-bg: #FEF9E7;
+  --fl-warn-border: #B8860B;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--fl-dark);
+  background: var(--fl-bg);
+}
+a { color: var(--fl-green); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--fl-card);
+  border-bottom: 1px solid var(--fl-border);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.header .brand { font-size: 20px; font-weight: 700; color: var(--fl-green); }
+.header .brand .sub { color: var(--fl-grey); font-weight: 400; font-size: 16px; margin-left: 8px; }
+.header .meta { font-size: 13px; color: var(--fl-grey); }
+
+.layout { max-width: 860px; margin: 0 auto; padding: 24px; }
+.content { background: var(--fl-card); border: 1px solid var(--fl-border); border-radius: 8px; padding: 40px 56px; }
+
+.hero { text-align: center; padding: 24px 0 32px 0; border-bottom: 1px solid var(--fl-border); margin-bottom: 32px; }
+.hero .title { font-size: 44px; font-weight: 800; color: var(--fl-green); margin: 0 0 6px 0; letter-spacing: -0.02em; }
+.hero .subtitle { font-size: 22px; color: var(--fl-dark); margin: 0 0 8px 0; font-weight: 500; }
+.hero .tagline { font-size: 15px; color: var(--fl-grey); font-style: italic; }
+.hero .meta-row { margin-top: 16px; font-size: 13px; color: var(--fl-grey); line-height: 1.7; }
+.hero .meta-row strong { color: var(--fl-dark); }
+
+h1 {
+  font-size: 28px;
+  color: var(--fl-green);
+  font-weight: 700;
+  margin: 32px 0 16px 0;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  scroll-margin-top: 80px;
+}
+h2 {
+  font-size: 19px;
+  color: var(--fl-dark);
+  margin: 24px 0 10px 0;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+p { margin: 0 0 14px 0; }
+ul, ol { margin: 0 0 16px 0; padding-left: 24px; }
+li { margin-bottom: 6px; }
+
+strong { font-weight: 700; }
+
+.callout {
+  background: var(--fl-callout-bg);
+  border-left: 4px solid var(--fl-green);
+  padding: 16px 20px;
+  margin: 20px 0;
+  border-radius: 4px;
+}
+.callout.warn {
+  background: var(--fl-warn-bg);
+  border-left-color: var(--fl-warn-border);
+}
+.callout-label {
+  color: var(--fl-green);
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.callout.warn .callout-label { color: var(--fl-warn-border); }
+.callout p { margin: 0; }
+.callout p + p { margin-top: 8px; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0 24px 0;
+  font-size: 15px;
+}
+th { background: var(--fl-green); color: white; text-align: left; padding: 10px 14px; font-weight: 600; font-size: 14px; }
+th:first-child { border-top-left-radius: 4px; }
+th:last-child { border-top-right-radius: 4px; }
+td { padding: 10px 14px; border-bottom: 1px solid var(--fl-border); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:nth-child(even) td { background: #FAFBFA; }
+
+.legal-emphasis {
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.toc-mini {
+  background: var(--fl-bg);
+  border: 1px solid var(--fl-border);
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin: 0 0 32px 0;
+}
+.toc-mini-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fl-grey);
+  font-weight: 600;
+  margin: 0 0 8px 0;
+}
+.toc-mini ol {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  columns: 2;
+  column-gap: 32px;
+  font-size: 14px;
+}
+.toc-mini li { margin-bottom: 4px; }
+.toc-mini a { color: var(--fl-dark); }
+
+.footer {
+  text-align: center;
+  padding: 32px 24px;
+  color: var(--fl-grey);
+  font-size: 14px;
+  border-top: 1px solid var(--fl-border);
+  margin-top: 32px;
+  background: var(--fl-card);
+}
+.footer a { color: var(--fl-green); }
+
+@media print {
+  .header { display: none; }
+  .layout { padding: 0; max-width: none; }
+  .content { border: none; padding: 0; }
+  h1 { page-break-after: avoid; }
+  table, .callout { break-inside: avoid; }
+}
+
+@media (max-width: 700px) {
+  .layout { padding: 12px; }
+  .content { padding: 24px 18px; border-radius: 6px; }
+  .hero .title { font-size: 32px; }
+  .hero .subtitle { font-size: 18px; }
+  h1 { font-size: 22px; }
+  h2 { font-size: 17px; }
+  .toc-mini ol { columns: 1; }
+  .header { padding: 12px 16px; }
+  .header .brand { font-size: 17px; }
+  .header .brand .sub { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="brand">FlipLogic AI <span class="sub">Privacy Policy</span></div>
+  <div class="meta"><a href="https://fliplogic.ai">Back to fliplogic.ai</a></div>
+</header>
+
+<div class="layout">
+  <main class="content">
+
+    <div class="hero">
+      <div class="title">FlipLogic AI</div>
+      <div class="subtitle">Privacy Policy</div>
+      <div class="tagline">How we collect, use, and protect your information</div>
+      <div class="meta-row">
+        <strong>Effective Date:</strong> April 26, 2026 &nbsp;·&nbsp; <strong>Last Updated:</strong> April 26, 2026<br>
+        <strong>Data Pro Marketing LLC</strong> &nbsp;·&nbsp; A Florida Limited Liability Company &nbsp;·&nbsp; <a href="https://fliplogic.ai">fliplogic.ai</a>
+      </div>
+    </div>
+
+    
+
+    <div class="toc-mini">
+      <div class="toc-mini-title">Contents</div>
+      <ol>
+        <li><a href="#sec-1">1. Introduction</a></li>
+      <li><a href="#sec-2">2. Information We Collect</a></li>
+      <li><a href="#sec-3">3. How We Use Your Information</a></li>
+      <li><a href="#sec-4">4. How We Store and Protect Your Information</a></li>
+      <li><a href="#sec-5">5. Third-Party Service Providers</a></li>
+      <li><a href="#sec-6">6. Your Rights and Choices</a></li>
+      <li><a href="#sec-7">7. Cookies and Tracking</a></li>
+      <li><a href="#sec-8">8. Children's Privacy</a></li>
+      <li><a href="#sec-9">9. International Data Transfers</a></li>
+      <li><a href="#sec-10">10. Data Breach Notification</a></li>
+      <li><a href="#sec-11">11. Changes to This Policy</a></li>
+      <li><a href="#sec-12">12. Contact Us</a></li>
+      </ol>
+    </div>
+
+    <section id="sec-1">
+<h1>1. Introduction</h1>
+<p>This Privacy Policy describes how Data Pro Marketing LLC ("we," "us," or "our"), a Florida limited liability company, collects, uses, stores, and shares information when you use the FlipLogic AI service available at <a href="https://fliplogic.ai">fliplogic.ai</a> (the "Service").</p>
+<p>FlipLogic AI is a deal analysis platform for fix-and-flip real estate investors. We take your privacy seriously, and we have designed the Service to collect only the data we need to operate it. This policy explains exactly what that means.</p>
+<p>By creating an account or using the Service, you agree to the practices described in this policy. If you do not agree, please do not use the Service.</p>
+<div class="callout">
+<div class="callout-label">Service Status</div>
+<p>FlipLogic AI is currently in active beta. Our data practices may evolve as the Service matures. We will notify registered users of any material change to this policy by email at least 14 days before the change takes effect.</p>
+</div>
+</section>
+
+<section id="sec-2">
+<h1>2. Information We Collect</h1>
+<h2>2.1 Information You Provide Directly</h2>
+<p>When you create an account and use the Service, you provide us with the following information:</p>
+<ul>
+<li>Email address and password (password is hashed and salted; we never see or store your plaintext password).</li>
+<li>Property addresses and property details you enter into deals (bedrooms, bathrooms, square footage, year built, etc.).</li>
+<li>Financial inputs you enter for deal analysis (purchase prices, rehab estimates, ARV estimates, loan terms, closing costs).</li>
+<li>Free-form notes you save in the Field Notes section of any deal.</li>
+<li>Audio recordings, photos, and video you capture or upload through the AI Walkthrough feature.</li>
+<li>Comparable sales (comps) data you enter or edit manually.</li>
+<li>Optional support communications you send to <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a>.</li>
+</ul>
+
+<h2>2.2 Information Collected Automatically</h2>
+<p>When you use the Service, we automatically collect certain technical information:</p>
+<ul>
+<li>Authentication tokens and session data.</li>
+<li>Browser type, operating system, and device information needed for the Service to function.</li>
+<li>IP address (used for security monitoring and rate limiting).</li>
+<li>Timestamps of your interactions with the Service (account creation, deal creation, AI analyses, subscription events).</li>
+</ul>
+
+<h2>2.3 Payment Information</h2>
+<p>When you subscribe to a paid plan, payment information (credit card numbers, billing address) is collected and stored exclusively by our payment processor, Stripe, Inc. We never see, store, or transmit your full credit card number. We receive only a Stripe customer identifier and limited transaction metadata (subscription status, last four digits of card, billing email) needed to manage your subscription.</p>
+
+<h2>2.4 Information We Do NOT Collect</h2>
+<p>To be clear about what we deliberately avoid collecting:</p>
+<ul>
+<li>We do not collect your Social Security Number, date of birth, or government identification.</li>
+<li>We do not collect bank account numbers or routing numbers.</li>
+<li>We do not collect your full credit card information (Stripe handles this).</li>
+<li>We do not use third-party advertising trackers, pixels, or behavioral analytics services.</li>
+<li><strong>We do not sell, rent, or trade your personal information to third parties for marketing purposes. Ever.</strong></li>
+</ul>
+</section>
+
+<section id="sec-3">
+<h1>3. How We Use Your Information</h1>
+<p>We use the information we collect for the following limited purposes:</p>
+<ul>
+<li>To provide, operate, and maintain the Service.</li>
+<li>To authenticate you and secure your account.</li>
+<li>To process AI-powered analysis of property walkthroughs (audio, photos, video) and generate scope-of-work findings.</li>
+<li>To pull comparable sales and rental data for properties you analyze.</li>
+<li>To process subscription payments and manage your billing.</li>
+<li>To send transactional communications (account verification, password reset, billing receipts, service notifications).</li>
+<li>To respond to your support requests and feedback.</li>
+<li>To detect, investigate, and prevent fraud, abuse, and security incidents.</li>
+<li>To comply with legal obligations or respond to valid legal process (subpoenas, court orders).</li>
+</ul>
+<p><strong>We do not use your data to train AI models.</strong> Property walkthroughs and other content you submit are processed by our AI vendors solely to return analysis results to you, not to improve or train the underlying models. (See Section 5 for our vendors' specific commitments.)</p>
+</section>
+
+<section id="sec-4">
+<h1>4. How We Store and Protect Your Information</h1>
+<h2>4.1 Storage Location</h2>
+<p>Your data is stored in cloud infrastructure operated by Supabase, Inc. on Amazon Web Services. Data is stored in secure, encrypted databases located in the United States.</p>
+
+<h2>4.2 Encryption</h2>
+<ul>
+<li>Data in transit is encrypted using TLS 1.2 or higher between your browser and our servers.</li>
+<li>Data at rest is encrypted in our database via Supabase's managed encryption.</li>
+<li>Passwords are hashed using industry-standard bcrypt algorithms — we cannot recover or view your password.</li>
+</ul>
+
+<h2>4.3 Access Control</h2>
+<p>Your data is protected by row-level security in our database. Each user can only read or modify their own deals, comps, scope items, and walkthrough findings. Database administrators at Data Pro Marketing LLC have backend access for operational purposes (debugging, support, billing reconciliation) but do not routinely view individual user data.</p>
+
+<h2>4.4 Data Retention</h2>
+<p>We retain your data as follows:</p>
+<ul>
+<li>Active accounts: data is retained for as long as your account is active.</li>
+<li>Account deletion: when you request deletion, your deals, comps, walkthrough findings, and scope items are permanently deleted within 30 days. We retain billing records for the period required by law (typically 7 years for tax purposes).</li>
+<li>Inactive accounts: accounts inactive for 24 months may be subject to deletion after 30 days' notice via email.</li>
+</ul>
+</section>
+
+<section id="sec-5">
+<h1>5. Third-Party Service Providers</h1>
+<p>FlipLogic AI is built on top of several third-party services. Each handles a specific function and receives only the data needed for that function. We have evaluated each vendor's privacy and security practices.</p>
+<table>
+<thead><tr><th>Vendor</th><th>Purpose &amp; Data Shared</th></tr></thead>
+<tbody>
+<tr><td>Stripe, Inc.</td><td>Payment processing and subscription management. Receives: email, billing details, payment card data (entered directly into Stripe). Stripe is PCI-DSS Level 1 certified.</td></tr>
+<tr><td>Supabase, Inc.</td><td>Database hosting and authentication. Stores: all account and deal data described in Section 2.</td></tr>
+<tr><td>Netlify, Inc.</td><td>Web hosting and SSL termination. Receives: standard web request metadata.</td></tr>
+<tr><td>Anthropic, PBC</td><td>AI analysis of walkthroughs and scope generation. Receives: walkthrough transcripts, photos, video frames, property metadata for the duration of analysis. Anthropic does not train on data submitted via the API per their terms.</td></tr>
+<tr><td>Deepgram, Inc.</td><td>Audio transcription for AI Walkthrough audio mode. Receives: audio recordings for transcription. Per Deepgram's enterprise terms, audio is not retained for model training.</td></tr>
+<tr><td>RentCast</td><td>Property comparable sales and rental data. Receives: property addresses you enter for comp pulls.</td></tr>
+<tr><td>ImprovMX</td><td>Email forwarding for support@fliplogic.ai inbound mail. Receives: email metadata and content sent to that address.</td></tr>
+</tbody>
+</table>
+<p>We do not authorize any of these vendors to use your data for their own marketing or to share it with their own third parties beyond what is required to provide their services to us.</p>
+</section>
+
+<section id="sec-6">
+<h1>6. Your Rights and Choices</h1>
+<h2>6.1 Access and Portability</h2>
+<p>You can access all your deal data, comps, walkthrough findings, and scope items at any time through the Service. To request a structured export of your data in a machine-readable format, email <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a>. We will respond within 30 days.</p>
+
+<h2>6.2 Correction</h2>
+<p>You can correct any information you've entered into the Service directly within the app. For corrections to billing or account information, contact <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a>.</p>
+
+<h2>6.3 Deletion</h2>
+<p>You have the right to delete your account and associated data at any time. You may request deletion by emailing <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a>. (An in-app account deletion feature is on our roadmap and will be available before broad public launch.) Upon receipt of a verified deletion request:</p>
+<ul>
+<li>All deals, comps, scope items, walkthrough findings, and notes are permanently deleted within 30 days.</li>
+<li>Any active subscription is canceled.</li>
+<li>Your authentication record is removed.</li>
+<li>Billing records required by tax law are retained for the legally required period.</li>
+</ul>
+
+<h2>6.4 California Residents (CCPA / CPRA)</h2>
+<p>If you are a California resident, you have additional rights under the California Consumer Privacy Act and California Privacy Rights Act:</p>
+<ul>
+<li>The right to know what personal information we collect about you.</li>
+<li>The right to delete your personal information (subject to legal exceptions).</li>
+<li>The right to correct inaccurate personal information.</li>
+<li>The right to opt out of the "sale" or "sharing" of personal information. <strong>We do not sell or share your personal information for cross-context behavioral advertising — there is nothing to opt out of.</strong></li>
+<li>The right to non-discrimination for exercising your rights.</li>
+</ul>
+<p>To exercise any of these rights, contact <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a>.</p>
+
+<h2>6.5 European Residents (GDPR)</h2>
+<p>If you are located in the European Economic Area, the United Kingdom, or Switzerland, you have rights under the General Data Protection Regulation:</p>
+<ul>
+<li>The right of access to your personal data.</li>
+<li>The right to rectification of inaccurate data.</li>
+<li>The right to erasure ("right to be forgotten").</li>
+<li>The right to restrict processing.</li>
+<li>The right to data portability.</li>
+<li>The right to object to processing.</li>
+<li>The right to lodge a complaint with a supervisory authority.</li>
+</ul>
+<p>Our legal basis for processing your data is the performance of our contract with you (the Terms of Service). To exercise your GDPR rights, contact <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a>. We are not required to designate an EU representative because the volume and nature of our processing of EU residents' data is limited and incidental.</p>
+</section>
+
+<section id="sec-7">
+<h1>7. Cookies and Tracking</h1>
+<p>FlipLogic AI uses only the cookies and local storage strictly necessary for the Service to function:</p>
+<ul>
+<li>Authentication cookies that keep you signed in across page reloads.</li>
+<li>Local storage entries that remember your selected deal and your onboarding state.</li>
+</ul>
+<p>We do not use third-party advertising cookies, behavioral tracking pixels, social media widgets that track you, or analytics tools that profile users across sites. Because we use only essential cookies, we do not display a cookie consent banner — there is no non-essential tracking to consent to.</p>
+</section>
+
+<section id="sec-8">
+<h1>8. Children's Privacy</h1>
+<p>FlipLogic AI is intended exclusively for use by adults age 18 or older. We do not knowingly collect information from anyone under 18. If you believe a child has provided information to us, please contact <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a> and we will investigate and delete the information promptly.</p>
+</section>
+
+<section id="sec-9">
+<h1>9. International Data Transfers</h1>
+<p>Our servers and most of our service providers are located in the United States. If you access the Service from outside the United States, your information will be transferred to, processed in, and stored in the United States. By using the Service, you consent to this transfer. We rely on Standard Contractual Clauses or equivalent legal mechanisms for transfers from the European Economic Area, United Kingdom, and Switzerland.</p>
+</section>
+
+<section id="sec-10">
+<h1>10. Data Breach Notification</h1>
+<p>In the event of a data breach that affects your personal information, we will notify you by email within 72 hours of discovery, in accordance with applicable law. Notifications will describe the nature of the breach, the data potentially affected, the steps we have taken in response, and the steps you can take to protect yourself.</p>
+</section>
+
+<section id="sec-11">
+<h1>11. Changes to This Policy</h1>
+<p>We may update this Privacy Policy as the Service evolves. When we make material changes, we will:</p>
+<ul>
+<li>Post the updated policy at fliplogic.ai with a new "Last Updated" date.</li>
+<li>Email registered users at least 14 days before the changes take effect, where the changes affect your rights or how we handle your data.</li>
+</ul>
+<p>Continued use of the Service after changes take effect constitutes acceptance of the updated policy.</p>
+</section>
+
+<section id="sec-12">
+<h1>12. Contact Us</h1>
+<p>Questions, concerns, or requests regarding this Privacy Policy or your personal data should be directed to:</p>
+<p>
+  <strong>Data Pro Marketing LLC</strong><br>
+  Attn: Privacy Officer<br>
+  Email: <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a><br>
+  Web: <a href="https://fliplogic.ai">fliplogic.ai</a>
+</p>
+<p>We respond to all privacy inquiries within 30 days.</p>
+</section>
+
+  </main>
+</div>
+
+<footer class="footer">
+  <p><strong>FlipLogic AI</strong> · operated by Data Pro Marketing LLC</p>
+  <p><a href="https://fliplogic.ai">fliplogic.ai</a> · <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a> · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a></p>
+  <p>© 2026 Data Pro Marketing LLC. All rights reserved.</p>
+</footer>
+
+</body>
+</html>

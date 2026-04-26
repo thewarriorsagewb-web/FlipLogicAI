@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlipLogic AI — User Guide</title>
+<meta name="description" content="Comprehensive user guide for FlipLogic AI — fix-and-flip deal analysis platform.">
+<style>
+  :root {
+    --fl-green: #1F8A4C;
+    --fl-green-light: #E8F3EC;
+    --fl-green-dark: #156237;
+    --fl-dark: #1A1A1A;
+    --fl-grey: #666666;
+    --fl-grey-light: #999999;
+    --fl-bg: #FAFBFA;
+    --fl-card: #FFFFFF;
+    --fl-border: #E5E7E5;
+    --fl-amber: #B8860B;
+    --fl-red: #B33A3A;
+    --fl-callout-bg: #F4F8F5;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--fl-dark);
+    background: var(--fl-bg);
+  }
+  a { color: var(--fl-green); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--fl-card);
+    border-bottom: 1px solid var(--fl-border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .header .brand {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--fl-green);
+  }
+  .header .brand .sub {
+    color: var(--fl-grey);
+    font-weight: 400;
+    font-size: 16px;
+    margin-left: 8px;
+  }
+  .header .meta {
+    font-size: 13px;
+    color: var(--fl-grey);
+  }
+
+  .layout {
+    display: flex;
+    max-width: 1280px;
+    margin: 0 auto;
+    gap: 32px;
+    padding: 24px;
+  }
+
+  .sidebar {
+    flex: 0 0 280px;
+    position: sticky;
+    top: 80px;
+    align-self: flex-start;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    background: var(--fl-card);
+    border: 1px solid var(--fl-border);
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .sidebar h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fl-grey);
+    margin: 0 0 12px 0;
+    font-weight: 600;
+  }
+  .sidebar ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .sidebar li {
+    margin: 0;
+  }
+  .sidebar a {
+    display: flex;
+    gap: 8px;
+    padding: 7px 8px;
+    color: var(--fl-dark);
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .sidebar a:hover {
+    background: var(--fl-green-light);
+    color: var(--fl-green-dark);
+    text-decoration: none;
+  }
+  .sidebar a.active {
+    background: var(--fl-green-light);
+    color: var(--fl-green-dark);
+    font-weight: 600;
+  }
+  .toc-num {
+    color: var(--fl-grey);
+    font-variant-numeric: tabular-nums;
+    flex: 0 0 auto;
+    min-width: 22px;
+  }
+  .toc-title { flex: 1; }
+
+  .content {
+    flex: 1;
+    min-width: 0;
+    background: var(--fl-card);
+    border: 1px solid var(--fl-border);
+    border-radius: 8px;
+    padding: 40px 56px;
+  }
+
+  .hero {
+    text-align: center;
+    padding: 32px 0 40px 0;
+    border-bottom: 1px solid var(--fl-border);
+    margin-bottom: 32px;
+  }
+  .hero .title {
+    font-size: 48px;
+    font-weight: 800;
+    color: var(--fl-green);
+    margin: 0 0 8px 0;
+    letter-spacing: -0.02em;
+  }
+  .hero .subtitle {
+    font-size: 22px;
+    color: var(--fl-dark);
+    margin: 0 0 8px 0;
+    font-weight: 500;
+  }
+  .hero .tagline {
+    font-size: 15px;
+    color: var(--fl-grey);
+    font-style: italic;
+  }
+  .hero .version {
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--fl-grey);
+  }
+
+  section {
+    margin-bottom: 56px;
+    padding-top: 16px;
+  }
+  section + section {
+    border-top: 1px solid var(--fl-border);
+    padding-top: 40px;
+  }
+
+  h1 {
+    font-size: 32px;
+    color: var(--fl-green);
+    font-weight: 700;
+    margin: 0 0 24px 0;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+  }
+  .section-num {
+    color: var(--fl-grey-light);
+    font-weight: 600;
+    margin-right: 8px;
+  }
+  h2 {
+    font-size: 22px;
+    color: var(--fl-dark);
+    margin: 32px 0 12px 0;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+  h3 {
+    font-size: 17px;
+    color: var(--fl-dark);
+    margin: 24px 0 8px 0;
+    font-weight: 700;
+  }
+
+  p { margin: 0 0 14px 0; }
+  ul, ol { margin: 0 0 16px 0; padding-left: 24px; }
+  li { margin-bottom: 6px; }
+  ol li { padding-left: 4px; }
+
+  strong { font-weight: 700; }
+  .green-text { color: var(--fl-green); }
+  .red-text { color: var(--fl-red); }
+
+  /* Callouts */
+  .callout {
+    background: var(--fl-callout-bg);
+    border-left: 4px solid var(--fl-green);
+    padding: 16px 20px;
+    margin: 20px 0;
+    border-radius: 4px;
+  }
+  .callout-label {
+    color: var(--fl-green);
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+  .callout p { margin: 0; }
+  .callout p + p { margin-top: 8px; }
+
+  /* Formula boxes */
+  .formula {
+    background: var(--fl-callout-bg);
+    border: 1px solid var(--fl-green);
+    padding: 14px 20px;
+    margin: 16px 0;
+    border-radius: 4px;
+    font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 15px;
+    text-align: center;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0 24px 0;
+    font-size: 15px;
+  }
+  th {
+    background: var(--fl-green);
+    color: white;
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  th:first-child { border-top-left-radius: 4px; }
+  th:last-child { border-top-right-radius: 4px; }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--fl-border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: #FAFBFA; }
+
+  table.glossary td:first-child {
+    font-weight: 600;
+    white-space: nowrap;
+    padding-right: 20px;
+  }
+
+  /* Deal score badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: white;
+  }
+  .badge.hot { background: #1F8A4C; }
+  .badge.warm { background: #E68A00; }
+  .badge.cold { background: #1976D2; }
+  .badge.dead { background: #B33A3A; }
+
+  /* Mobile menu toggle */
+  .menu-toggle {
+    display: none;
+    background: var(--fl-green);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .footer {
+    text-align: center;
+    padding: 32px 24px;
+    color: var(--fl-grey);
+    font-size: 14px;
+    border-top: 1px solid var(--fl-border);
+    margin-top: 32px;
+    background: var(--fl-card);
+  }
+  .footer a { color: var(--fl-green); }
+
+  /* Print styles — clean print-to-PDF */
+  @media print {
+    .header, .sidebar, .menu-toggle { display: none !important; }
+    .layout { display: block; padding: 0; }
+    .content { border: none; padding: 0; }
+    section { page-break-before: auto; break-inside: avoid; }
+    h1 { page-break-after: avoid; }
+    h2, h3 { page-break-after: avoid; }
+    table, .callout, .formula { break-inside: avoid; }
+  }
+
+  /* Responsive — mobile / tablet */
+  @media (max-width: 900px) {
+    .layout {
+      flex-direction: column;
+      padding: 12px;
+      gap: 0;
+    }
+    .sidebar {
+      flex: 1 1 auto;
+      position: static;
+      max-height: none;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .sidebar.open { display: block; }
+    .menu-toggle {
+      display: block;
+      margin: 8px 0 16px 0;
+      width: 100%;
+    }
+    .content {
+      padding: 24px 18px;
+      border-radius: 6px;
+    }
+    .hero .title { font-size: 36px; }
+    .hero .subtitle { font-size: 18px; }
+    h1 { font-size: 26px; }
+    h2 { font-size: 20px; }
+    h3 { font-size: 16px; }
+    table { font-size: 14px; }
+    th, td { padding: 8px 10px; }
+    .header { padding: 12px 16px; }
+    .header .brand { font-size: 17px; }
+    .header .brand .sub { display: none; }
+  }
+
+  /* Tap target sizing on mobile */
+  @media (max-width: 600px) {
+    .sidebar a { padding: 12px 10px; font-size: 15px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="brand">FlipLogic AI <span class="sub">User Guide</span></div>
+  <div class="meta">v1.0 · April 2026</div>
+</header>
+
+<div class="layout">
+
+  <button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">
+    ☰ Contents
+  </button>
+
+  <nav class="sidebar" aria-label="Table of contents">
+    <h2>Contents</h2>
+    <ul>
+        <li><a href="#welcome"><span class="toc-num">1.</span><span class="toc-title">Welcome to FlipLogic AI</span></a></li>
+        <li><a href="#quick-start"><span class="toc-num">2.</span><span class="toc-title">Quick Start: Your First Deal in 15 Minutes</span></a></li>
+        <li><a href="#deal-analysis-tab"><span class="toc-num">3.</span><span class="toc-title">The Deal Analysis Tab</span></a></li>
+        <li><a href="#ai-walkthrough-tab"><span class="toc-num">4.</span><span class="toc-title">The AI Walkthrough Tab</span></a></li>
+        <li><a href="#comps-tab"><span class="toc-num">5.</span><span class="toc-title">The Comps Tab</span></a></li>
+        <li><a href="#rental-pivot-tab"><span class="toc-num">6.</span><span class="toc-title">The Rental Pivot Tab</span></a></li>
+        <li><a href="#stress-test-tab"><span class="toc-num">7.</span><span class="toc-title">The Stress Test Tab</span></a></li>
+        <li><a href="#scope-of-work-tab"><span class="toc-num">8.</span><span class="toc-title">The Scope of Work Tab</span></a></li>
+        <li><a href="#lender-packet-tab"><span class="toc-num">9.</span><span class="toc-title">The Lender Packet Tab</span></a></li>
+        <li><a href="#concepts"><span class="toc-num">10.</span><span class="toc-title">Concepts Explained</span></a></li>
+        <li><a href="#trial-and-subscription"><span class="toc-num">11.</span><span class="toc-title">Your Trial and Subscription</span></a></li>
+        <li><a href="#account-and-settings"><span class="toc-num">12.</span><span class="toc-title">Account and Settings</span></a></li>
+        <li><a href="#tips-and-best-practices"><span class="toc-num">13.</span><span class="toc-title">Tips and Best Practices</span></a></li>
+        <li><a href="#faq"><span class="toc-num">14.</span><span class="toc-title">Frequently Asked Questions</span></a></li>
+        <li><a href="#glossary"><span class="toc-num">15.</span><span class="toc-title">Glossary</span></a></li>
+        <li><a href="#troubleshooting"><span class="toc-num">16.</span><span class="toc-title">Troubleshooting and Getting Help</span></a></li>
+    </ul>
+  </nav>
+
+  <main class="content">
+    <div class="hero">
+      <div class="title">FlipLogic AI</div>
+      <div class="subtitle">User Guide</div>
+      <div class="tagline">Fix-and-Flip Deal Analysis Platform</div>
+      <div class="version">Version 1.0 · April 2026 · <a href="https://fliplogic.ai">fliplogic.ai</a></div>
+    </div>
+
+
+<section id="welcome">
+  <h1><span class="section-num">1.</span> Welcome to FlipLogic AI</h1>
+  
+<p>FlipLogic AI is a deal analysis platform built specifically for fix-and-flip real estate investors. It is designed to answer one question quickly and confidently: <strong>is this deal worth pursuing?</strong></p>
+<p>This guide covers everything the app does, how to use each feature, and the concepts behind the numbers. You can read it cover to cover, or jump to a section using the table of contents.</p>
+
+<h2>Who FlipLogic AI Is For</h2>
+<ul>
+<li>Fix-and-flip investors evaluating residential properties for renovation and resale.</li>
+<li>Investors working with hard money lenders who need clean deal packets.</li>
+<li>Investors managing multiple deals at once who need to keep numbers straight across properties.</li>
+<li>New investors who want help thinking through scope, ARV, and offers — and experienced investors who want to move faster.</li>
+</ul>
+
+<h2>What Makes FlipLogic AI Different</h2>
+<p>Most deal calculators ask you for a single rehab number and a single ARV (after-repair value) number. Real deals do not work that way. You usually have your initial guess, what an AI walkthrough or contractor estimate suggests, and what the comps actually support.</p>
+<p>FlipLogic AI tracks all of those sources side by side and lets you switch between them with a single tap. Every downstream number — your Maximum Allowable Offer, ROI, profit, deal score — recalculates instantly. That means you can stress-test a deal in real time without redoing your math.</p>
+
+<h2>What You Can Do With FlipLogic AI</h2>
+<ul>
+<li>Analyze a deal across seven specialized tabs: Deal Analysis, AI Walkthrough, Comps, Rental Pivot, Stress Test, Scope of Work, and Lender Packet.</li>
+<li>Pull live sale comps and rental comps from RentCast just by entering an address.</li>
+<li>Walk a property with your phone — using audio, photos, video, or smart mode — and let AI generate a scope of work for you.</li>
+<li>Calculate Maximum Allowable Offer (MAO) live as you type, and see at a glance how far under or over you are.</li>
+<li>Score every deal as HOT, WARM, COLD, or DEAD based on your real numbers.</li>
+<li>Generate a professional lender packet and a blind contractor bid sheet for printing or PDF export.</li>
+<li>Save and sync deals across devices, with cloud backup.</li>
+</ul>
+
+</section>
+
+
+<section id="quick-start">
+  <h1><span class="section-num">2.</span> Quick Start: Your First Deal in 15 Minutes</h1>
+  
+<p>This walkthrough takes you from creating an account to having a fully analyzed deal. <strong>If you read nothing else in this guide, read this section.</strong></p>
+
+<h2>Step 1 — Create Your Account</h2>
+<ol>
+<li>Go to <a href="https://fliplogic.ai">fliplogic.ai</a> in any modern web browser. The app works on desktop and mobile.</li>
+<li>Enter your email and choose a password. No credit card is required.</li>
+<li>You will land on a brief onboarding screen the first time you log in. Read it or skip it — you can always reference this guide later.</li>
+</ol>
+
+<div class="callout">
+<div class="callout-label">New account = 5 free AI analyses</div>
+<p>Your account starts with 5 full AI analyses on the house. You can use them on whichever deals you want, with no time limit. The trial only counts AI uses — not deals you create manually.</p>
+</div>
+
+<h2>Step 2 — Create Your First Deal</h2>
+<ol>
+<li>In the sidebar, tap <strong>+ NEW DEAL</strong>.</li>
+<li>Enter the property address. This is the only required field to get started.</li>
+<li>Optionally enter a nickname (for example, "123 Maple Ave" or "Cleveland flip") so you can find the deal quickly later.</li>
+</ol>
+
+<h2>Step 3 — Enter Property Specs and Initial Numbers</h2>
+<p>Go to the <strong>Deal Analysis</strong> tab. Fill in what you know:</p>
+<ul>
+<li><strong>Property Specs:</strong> bedrooms, bathrooms, and square footage. These matter — they drive comp matching and AI cost estimates later.</li>
+<li><strong>Acquisition:</strong> purchase price, closing costs.</li>
+<li><strong>Rehab Cost — Initial Estimate:</strong> your gut guess at this point. Don't agonize over it — you'll refine it.</li>
+<li><strong>ARV — Initial Estimate:</strong> your gut number for what the property will sell for after rehab. Same idea — refine it later.</li>
+</ul>
+<p>As soon as those four numbers are in, you have a working deal. The Maximum Allowable Offer (MAO) shows up live, and so does the Deal Score.</p>
+
+<h2>Step 4 — Pull Comps</h2>
+<p>Go to the <strong>Comps</strong> tab. Tap the <strong>RentCast</strong> button to auto-pull sale comps for the property's address.</p>
+<p>RentCast returns sale comps, an estimated ARV, and the data you need to weight them. The first time you pull comps for a deal, FlipLogic auto-switches your active ARV source from "Initial Estimate" to "Comp-Derived" and shows a confirmation toast. That means your MAO and ROI are now driven by real comp data instead of your initial guess.</p>
+
+<div class="callout">
+<div class="callout-label">One pull per deal during beta</div>
+<p>To protect shared API credits during the beta period, RentCast can be pulled once per deal. Make sure you've entered Property Specs (bed, bath, sqft) before pulling — that's how the comps get matched accurately.</p>
+</div>
+
+<h2>Step 5 — Run an AI Walkthrough (Optional but Recommended)</h2>
+<p>Go to the <strong>AI Walkthrough</strong> tab. Pick the mode that fits your situation:</p>
+<ul>
+<li><strong>Photos</strong> — upload pictures of the property. Best when you're not on-site.</li>
+<li><strong>Audio</strong> — record yourself walking the property and describing what you see. Best when your hands are full.</li>
+<li><strong>Video</strong> — record video of the property. Best when visuals matter more than your narration.</li>
+<li><strong>Smart Mode</strong> — audio with on-demand video bursts. Best for thorough walkthroughs.</li>
+</ul>
+<p>After analysis (typically 20–30 seconds), the AI returns a list of findings — things like "replace flooring throughout (~$X)" or "update kitchen cabinets (~$Y)." Push the findings you agree with into your Scope of Work with one tap.</p>
+<p>The first AI walkthrough on a deal auto-switches your active Rehab source from "Initial Estimate" to "AI Walkthrough." Now your MAO and Deal Score are running on real, line-item data.</p>
+
+<h2>Step 6 — Review the Deal</h2>
+<p>Back on the Deal Analysis tab, look at the four things that matter most:</p>
+<ul>
+<li><strong>MAO vs. Purchase Price</strong> — green means you're under MAO (good). Red means you're over (caution).</li>
+<li><strong>Deal Score</strong> — HOT, WARM, COLD, or DEAD based on ROI, LTV, and profit.</li>
+<li><strong>Net Profit</strong> — what you walk away with after closing, holding, and selling costs.</li>
+<li><strong>ROI</strong> — return on the total project cost. 20%+ is HOT territory.</li>
+</ul>
+
+<h2>Step 7 — Generate a Lender Packet</h2>
+<p>Go to the <strong>Lender Packet</strong> tab. The app builds a professional packet from your deal data — purchase price, ARV, rehab, financials, comps, scope. Tap <strong>Print</strong> to send it to your printer or save as PDF.</p>
+<p>That's it — you have a complete, defensible deal analysis with backing data, ready for a lender, partner, or your own files.</p>
+
+</section>
+
+
+<section id="deal-analysis-tab">
+  <h1><span class="section-num">3.</span> The Deal Analysis Tab</h1>
+  
+<p>The Deal Analysis tab is the heart of FlipLogic AI. It is divided into seven sections that flow top to bottom. Numbers update live as you type.</p>
+
+<h2>3.1 Property Specs</h2>
+<p>Bedrooms, bathrooms, and square footage. These three numbers drive everything else — comp matching, AI cost estimates, MAO calculations.</p>
+<div class="callout">
+<div class="callout-label">Single source of truth</div>
+<p>Square footage is edited only on the Deal Analysis tab. The Comps tab displays it as read-only. This prevents accidental drift between tabs.</p>
+</div>
+
+<h2>3.2 Acquisition</h2>
+<ul>
+<li><strong>Purchase Price</strong> — what you plan to pay for the property.</li>
+<li><strong>Closing Costs (Buy)</strong> — title, escrow, recording, etc. for the purchase side.</li>
+<li><strong>Closing Costs (Sell)</strong> — agent commissions, transfer taxes, etc. for when you resell.</li>
+</ul>
+
+<h2>3.3 Rehab Cost Breakdown</h2>
+<p>This is where FlipLogic's multi-source design shines. You can track up to three rehab cost sources at once, and pick which one drives your downstream numbers using a radio button.</p>
+<table>
+<thead><tr><th>Rehab Source</th><th>What It Means</th></tr></thead>
+<tbody>
+<tr><td>Initial Estimate</td><td>Your manual entry — your gut number.</td></tr>
+<tr><td>AI Walkthrough</td><td>Sum of scope items generated by the AI Walkthrough feature. Updates automatically as items are added or removed.</td></tr>
+<tr><td>Manual Override</td><td>A specific number you want to lock in — e.g., a contractor's bid you've decided to trust.</td></tr>
+</tbody>
+</table>
+<p>Switching the active source instantly updates MAO, ROI, profit, and Deal Score. There is no "save" step — what you select is what drives the deal.</p>
+
+<h2>3.4 ARV Breakdown</h2>
+<p>ARV (After-Repair Value) is the price you expect the property to sell for once rehab is complete. FlipLogic tracks two ARV sources:</p>
+<table>
+<thead><tr><th>ARV Source</th><th>What It Means</th></tr></thead>
+<tbody>
+<tr><td>Initial Estimate</td><td>Your manual entry — your starting guess.</td></tr>
+<tr><td>Comp-Derived</td><td>Calculated from RentCast sale comps, weighted by similarity and adjusted to your property's square footage.</td></tr>
+</tbody>
+</table>
+<p>As with rehab, the active ARV source drives every downstream calculation. The first RentCast pull on a deal auto-switches the active source to Comp-Derived.</p>
+
+<h2>3.5 Maximum Allowable Offer (MAO)</h2>
+<p>MAO is the highest price you can pay for the property and still hit your target return. The standard formula is:</p>
+<div class="formula"><strong>MAO = (Active ARV × MAO %) − Active Rehab Cost</strong></div>
+<p>FlipLogic defaults to a 70% MAO percentage, which is the industry standard for fix-and-flip. You can adjust this per deal — for example, set it to 65% for a more conservative offer in a softer market, or 75% if you have other levers (low-cost capital, high-confidence ARV) that justify it.</p>
+<p>Right next to MAO, you'll see the Purchase vs. MAO indicator:</p>
+<ul>
+<li><span class="green-text"><strong>Green</strong></span> — your purchase price is at or below MAO. The deal makes sense at the margin you want.</li>
+<li><span class="red-text"><strong>Red</strong></span> — your purchase price is above MAO. Either negotiate down, find more rehab efficiency, or find a higher-ARV exit.</li>
+</ul>
+
+<h2>3.6 Financing</h2>
+<p>Enter your loan terms here:</p>
+<ul>
+<li>Loan Amount.</li>
+<li>Interest Rate (annual).</li>
+<li>Term (years).</li>
+<li>Hold Period (months) — how long you expect to own the property before resale.</li>
+</ul>
+<p>FlipLogic uses standard amortization to calculate your monthly payment, then multiplies by the hold period to get total holding costs. These flow into your net profit calculation.</p>
+
+<h2>3.7 Field Notes</h2>
+<p>A free-form notes section for anything that doesn't fit elsewhere — seller motivation, neighborhood quirks, agent contact, follow-up reminders. Notes save automatically and sync across your devices.</p>
+
+</section>
+
+
+<section id="ai-walkthrough-tab">
+  <h1><span class="section-num">4.</span> The AI Walkthrough Tab</h1>
+  
+<p>The AI Walkthrough tab turns a property visit into a scope of work in about 30 seconds. Pick a mode, capture what you see, and let the AI do the line-item analysis.</p>
+
+<h2>4.1 The Year Built Gate</h2>
+<p>Before any AI analysis runs, you'll be asked to enter the property's year built (or explicitly skip it). This matters because:</p>
+<ul>
+<li>Pre-1978 properties may have lead paint considerations.</li>
+<li>Pre-1980 properties are more likely to have asbestos in flooring, insulation, or popcorn ceilings.</li>
+<li>Older homes often have outdated electrical (knob-and-tube, aluminum) or galvanized plumbing.</li>
+</ul>
+<p>Year built doesn't change the AI's process — it changes the cost estimates. A bathroom remodel in a 1955 house is not the same line item as a bathroom remodel in a 2005 house.</p>
+
+<h2>4.2 Photos Mode</h2>
+<p>Upload photos of the property. Useful when:</p>
+<ul>
+<li>You couldn't visit in person and a wholesaler or agent sent you photos.</li>
+<li>You want to analyze a listing's MLS photos before driving out.</li>
+<li>You want a fast read on a property's general condition.</li>
+</ul>
+<p><strong>How to use it:</strong></p>
+<ol>
+<li>Tap the Photos mode.</li>
+<li>Upload one or more photos (drag-and-drop on desktop, file picker on mobile).</li>
+<li>Tap Analyze. The AI examines each image and returns a list of likely scope items with rough costs.</li>
+</ol>
+
+<h2>4.3 Audio Mode</h2>
+<p>Record yourself walking the property and describing what you see. The AI transcribes your audio and generates a scope of work from your narration.</p>
+<p><strong>Best for:</strong></p>
+<ul>
+<li>On-site walkthroughs where you want to keep your hands free.</li>
+<li>Conditions where you can describe more than the camera can capture (smell, sound, feel).</li>
+<li>Investors who think out loud naturally.</li>
+</ul>
+<p><strong>How to use it:</strong></p>
+<ol>
+<li>Tap the Audio mode.</li>
+<li>Tap Start Recording and walk the property. Describe each room — what's there, what needs work, what should stay.</li>
+<li>Tap Stop when you're done. The AI transcribes and analyzes.</li>
+</ol>
+<div class="callout">
+<div class="callout-label">Tap-to-Flag works on every device</div>
+<p>While recording, you can tap a button to flag a moment of interest ("this kitchen needs a full gut" — flag). Flags get pulled out and emphasized in the AI's analysis. The voice trigger phrase works on desktop, but on mobile we disabled it to prevent the recording from picking up the chime — use the tap button instead.</p>
+</div>
+
+<h2>4.4 Video Mode</h2>
+<p>Record video of the property using your rear camera. The AI captures frames every 3 seconds and analyzes them for scope items.</p>
+<p><strong>Best for:</strong></p>
+<ul>
+<li>Visual conditions that are hard to describe — wear patterns, cosmetic damage, layout.</li>
+<li>Properties where you want a visual record to share with a partner or contractor later.</li>
+</ul>
+
+<h2>4.5 Smart Mode</h2>
+<p>Audio with on-demand video bursts. You record audio continuously, and tap a button when you want to capture a few seconds of video — for example, when you walk into a kitchen and want both your description and a visual. Each video burst is timestamped.</p>
+<p>Best for thorough walkthroughs where you want the best of both audio and video without recording continuous video the whole time.</p>
+
+<h2>4.6 Reviewing AI Findings</h2>
+<p>After analysis, you'll see a list of findings. Each one typically has:</p>
+<ul>
+<li>A short description (e.g., "Replace carpet in living room").</li>
+<li>A category (Flooring, Kitchen, Bathroom, Mechanical, Cosmetic, etc.).</li>
+<li>A rough cost estimate.</li>
+</ul>
+<p>For each finding, you can:</p>
+<ul>
+<li><strong>Add to Scope</strong> — push it to the Scope of Work tab as a line item.</li>
+<li><strong>Edit</strong> — tweak the description or cost before adding.</li>
+<li><strong>Dismiss</strong> — ignore it (e.g., the AI flagged something you've already accounted for).</li>
+</ul>
+
+<h2>4.7 Property Spec Change Detection</h2>
+<p>If the AI hears you say things like "we'll convert this den into a fourth bedroom" or "this half-bath is going to be a full bath," it will detect the planned spec change and show a banner with three options:</p>
+<ul>
+<li><strong>Accept</strong> — update the property's beds/baths/sqft on the Deal Analysis tab. ARV and comps get re-weighted automatically.</li>
+<li><strong>Modify</strong> — accept with adjustments (e.g., AI heard "add 200 sqft" but you actually plan 150).</li>
+<li><strong>Dismiss</strong> — ignore the suggestion.</li>
+</ul>
+
+<h2>4.8 Recording Reliability Features</h2>
+<ul>
+<li><strong>Wake Lock</strong> — your screen stays on automatically while recording, so the device doesn't sleep mid-walkthrough.</li>
+<li><strong>Offline Vault</strong> — if your connection drops, recordings are stored locally and uploaded automatically when you're back online.</li>
+<li><strong>Loading Indicator</strong> — you'll see an Analyzing indicator during the 20–30 second processing window.</li>
+</ul>
+
+</section>
+
+
+<section id="comps-tab">
+  <h1><span class="section-num">5.</span> The Comps Tab</h1>
+  
+<p>Comparable sales ("comps") are the foundation of any defensible ARV. The Comps tab lets you pull comps automatically from RentCast, edit them, and add your own.</p>
+
+<h2>5.1 Pulling Comps with RentCast</h2>
+<p>Tap the <strong>RentCast</strong> button to auto-pull sale comps based on the property's address. RentCast returns:</p>
+<ul>
+<li>A list of recent comparable sales with addresses, sale prices, sale dates, beds, baths, square footage, and distance.</li>
+<li>An estimated ARV based on the weighted average of those comps adjusted to your property's square footage.</li>
+</ul>
+<div class="callout">
+<div class="callout-label">Property Specs first, then comps</div>
+<p>For best comp quality, enter your Property Specs (beds, baths, sqft) <strong>BEFORE</strong> pulling comps. RentCast uses your specs to weight comps by similarity. A 3/2/1500 home and a 4/3/2500 home are very different — comps that match yours produce much better ARV estimates.</p>
+</div>
+
+<h2>5.2 Editing and Adding Comps Manually</h2>
+<p>You can edit any auto-pulled comp or add your own. Manual additions are useful when:</p>
+<ul>
+<li>You know about a sale RentCast missed — for example, a recent off-market flip.</li>
+<li>You want to remove a comp that doesn't actually match (different school district, busy road, very different layout).</li>
+<li>You're testing different scenarios for a stress test.</li>
+</ul>
+<p>Each comp has fields for address, sale price, beds, baths, square footage, and an editable weight.</p>
+
+<h2>5.3 The Weighted ARV Calculation</h2>
+<p>Comp-Derived ARV is calculated as a weighted price-per-square-foot, multiplied by your subject property's square footage. The weighting accounts for similarity — comps with closer specs and locations contribute more to the final number.</p>
+<p>Practical implication: if your subject is 1,800 sqft and your comps are mostly 1,500–2,000 sqft, your ARV will be reliable. If your comps are mostly 2,500+ sqft mansions, the per-sqft number will be inflated and the system can only weight what you give it. Curate your comps.</p>
+
+<h2>5.4 Subject Square Footage — Read Only Here</h2>
+<p>The Comps tab displays your subject property's square footage as a reference, but it cannot be edited here. Edit it on the Deal Analysis tab under Property Specs. This prevents accidental drift between tabs.</p>
+
+</section>
+
+
+<section id="rental-pivot-tab">
+  <h1><span class="section-num">6.</span> The Rental Pivot Tab</h1>
+  
+<p>Sometimes the flip math doesn't quite work — but the rental math does. The Rental Pivot tab gives you a quick rental analysis using rental comps and DSCR (Debt-Service Coverage Ratio).</p>
+
+<h2>6.1 Pulling Rental Comps</h2>
+<p>Tap the <strong>RentCast</strong> button on this tab to pull rental comps and a fair-market-rent estimate. You'll get a list of nearby rentals with rents, beds, baths, and square footage, plus an estimated monthly rent for your property.</p>
+
+<h2>6.2 DSCR and Cash Flow</h2>
+<p>DSCR is the metric most rental lenders use to underwrite. The formula:</p>
+<div class="formula"><strong>DSCR = (Monthly Rent − Operating Expenses) / Monthly Loan Payment</strong></div>
+<p>A DSCR of 1.0 means rent exactly covers your loan and expenses. Most lenders want 1.20 or higher. FlipLogic shows your DSCR live as you adjust rent and expenses.</p>
+<p>Cash flow is just (Rent − Expenses − Payment). Positive cash flow means the property pays you each month.</p>
+
+<h2>6.3 When to Pivot</h2>
+<p>Common pivot scenarios:</p>
+<ul>
+<li>The flip doesn't pencil at your target ROI, but the rental cash flow is strong enough to justify holding.</li>
+<li>Market is softening — you'd rather collect rent for two years than fire-sale a flip.</li>
+<li>Property has features (deep lot, ADU potential) that have more value to a long-term hold than a flipper buyer.</li>
+</ul>
+
+</section>
+
+
+<section id="stress-test-tab">
+  <h1><span class="section-num">7.</span> The Stress Test Tab</h1>
+  
+<p>The Stress Test tab runs three what-if scenarios on your deal so you can see what happens when reality doesn't go to plan.</p>
+
+<h2>7.1 The Three Scenarios</h2>
+<table>
+<thead><tr><th>Scenario</th><th>What It Tests</th></tr></thead>
+<tbody>
+<tr><td>Best Case</td><td>ARV slightly higher than expected, rehab on or under budget. The optimistic outcome.</td></tr>
+<tr><td>Base Case</td><td>Your current numbers as entered — what the deal looks like if everything goes as planned.</td></tr>
+<tr><td>Worst Case</td><td>ARV pulls back, rehab overruns, hold time extends. The pessimistic outcome that you can still survive — or not.</td></tr>
+</tbody>
+</table>
+
+<h2>7.2 Deal Health Check</h2>
+<p>The Deal Health Check is a quick read on how robust your deal is to bad news. A healthy deal still produces an acceptable outcome in the worst case. A fragile deal looks great in the base case but goes underwater the moment anything slips.</p>
+<p>Use the Stress Test before committing capital, especially on tight-margin deals.</p>
+
+</section>
+
+
+<section id="scope-of-work-tab">
+  <h1><span class="section-num">8.</span> The Scope of Work Tab</h1>
+  
+<p>The Scope of Work (SOW) tab is where line-item rehab costs live. Items get here either by AI walkthrough findings or by manual entry.</p>
+
+<h2>8.1 Adding and Editing Items</h2>
+<p>Each scope item has:</p>
+<ul>
+<li>A short description (e.g., "Replace HVAC condenser").</li>
+<li>A category (Mechanical, Kitchen, Bath, Flooring, Roof, Exterior, etc.).</li>
+<li>A My Estimate cost.</li>
+</ul>
+<p>Items are grouped by category for easy review. The total at the bottom feeds the AI Walkthrough rehab source on the Deal Analysis tab — change a scope item, and your MAO, ROI, and Deal Score update live.</p>
+
+<h2>8.2 Adding Items From AI Walkthrough</h2>
+<p>On the AI Walkthrough tab, every finding has an Add to Scope button. Tapping it pushes the item to this tab with the AI's category and estimate filled in. Edit later if you want.</p>
+
+<h2>8.3 Blind SOW Print</h2>
+<p>The Blind SOW Print feature generates a contractor bid sheet that includes your scope items and categories — but <strong>NOT</strong> your cost estimates. You hand this sheet to multiple contractors and get bids without anchoring them to your number. Then you compare the bids honestly.</p>
+<p>This is the standard workflow used by experienced flippers to get competitive bids. It is built into FlipLogic so you can print or PDF the sheet directly from the app.</p>
+
+</section>
+
+
+<section id="lender-packet-tab">
+  <h1><span class="section-num">9.</span> The Lender Packet Tab</h1>
+  
+<p>The Lender Packet tab compiles your deal into a professional document ready to send to a hard money lender, partner, or investor.</p>
+
+<h2>9.1 What's In the Packet</h2>
+<ul>
+<li>Property summary — address, beds, baths, sqft, year built.</li>
+<li>Deal financials — purchase price, rehab, ARV, MAO, ROI, profit.</li>
+<li>Loan request — loan amount, terms, LTV, LTC.</li>
+<li>Comps — the comps you've pulled, with prices and details.</li>
+<li>Scope of Work — line items grouped by category.</li>
+<li>Field notes you've added on the Deal Analysis tab.</li>
+</ul>
+
+<h2>9.2 Preview and Print</h2>
+<p>The packet preview updates live as you change deal data. When you're ready, tap <strong>Print</strong> — most browsers will let you save as PDF directly from the print dialog. You can do this on desktop or mobile.</p>
+
+</section>
+
+
+<section id="concepts">
+  <h1><span class="section-num">10.</span> Concepts Explained</h1>
+  
+<p>This section is the conceptual primer behind every number FlipLogic shows you. Skim it once now, return to it as questions come up.</p>
+
+<h2>10.1 ARV (After-Repair Value)</h2>
+<p>ARV is what the property will sell for once rehab is done. Everything else in fix-and-flip math depends on ARV. If your ARV is wrong, your offer is wrong, your loan is wrong, and your profit is wrong.</p>
+<p>ARV is grounded in comps — recent sales of similar properties in the same neighborhood. The closer the matches (size, condition, location, school), the better the ARV.</p>
+
+<h2>10.2 MAO (Maximum Allowable Offer)</h2>
+<p>MAO is the highest price you can pay and still hit your target margin. The standard formula:</p>
+<div class="formula"><strong>MAO = (ARV × MAO %) − Rehab Cost</strong></div>
+<p>The MAO % is your target — typically 70%, lower for tighter markets, higher only when you have other levers (cheap capital, high-confidence ARV, low risk).</p>
+<p>If your purchase price is above MAO, you have three levers: negotiate the purchase down, reduce rehab costs, or get more confidence in a higher ARV.</p>
+
+<h2>10.3 ROI (Return on Investment)</h2>
+<p>ROI is your net profit divided by your total project cost, expressed as a percentage. FlipLogic calculates project cost as purchase + rehab + buy-side closing. ROI tells you how efficiently your capital worked.</p>
+
+<h2>10.4 LTV (Loan-to-Value)</h2>
+<p>LTV is your loan amount divided by ARV. Lenders use LTV to size loans — most fix-and-flip lenders will go up to 70–75% LTV. A 65% LTV deal is conservative; an 80% LTV deal will struggle to get financed.</p>
+
+<h2>10.5 LTC (Loan-to-Cost)</h2>
+<p>LTC is your loan amount divided by total project cost. Some lenders cap LTC instead of (or in addition to) LTV. LTC tells you how much of the project the lender is funding versus how much you're bringing to the table.</p>
+
+<h2>10.6 DSCR (Debt-Service Coverage Ratio)</h2>
+<p>DSCR is the rental world's version of "can this property carry itself?" It's monthly net operating income divided by monthly debt service. 1.20 or higher is the typical lender threshold. Below 1.0 means the property doesn't even cover its own loan from rent.</p>
+
+<h2>10.7 Multi-Source Switching</h2>
+<p>Real deals have multiple credible numbers for rehab and ARV. FlipLogic lets you keep all of them visible and switch the active source with a tap. This isn't a quirk — it's the design.</p>
+<p>Examples of why you'd switch:</p>
+<ul>
+<li>Started with an Initial rehab estimate, ran an AI walkthrough — switch to AI Walkthrough.</li>
+<li>Got a contractor bid that's more reliable than the AI estimate — switch to Manual Override and enter the contractor number.</li>
+<li>Pulled comps and trust the comp-derived ARV more than your initial guess — the system auto-switches you.</li>
+</ul>
+
+<h2>10.8 Deal Score (HOT / WARM / COLD / DEAD)</h2>
+<p>FlipLogic scores every deal automatically based on three criteria: ROI, LTV, and net profit. Switching active sources changes the score in real time.</p>
+<table>
+<thead><tr><th>Score</th><th>Criteria</th></tr></thead>
+<tbody>
+<tr><td><span class="badge hot">HOT</span></td><td>ROI ≥ 20%  AND  LTV ≤ 70%  AND  profit &gt; 0</td></tr>
+<tr><td><span class="badge warm">WARM</span></td><td>ROI ≥ 12%  AND  LTV ≤ 80%  AND  profit &gt; 0</td></tr>
+<tr><td><span class="badge cold">COLD</span></td><td>ROI ≥ 5%   AND  profit &gt; 0</td></tr>
+<tr><td><span class="badge dead">DEAD</span></td><td>Anything below COLD — including any deal that loses money.</td></tr>
+</tbody>
+</table>
+<p>HOT is the target. WARM is workable if other factors (location, exit timing, partner financing) tilt your way. COLD is for a closer look — sometimes there's a hidden lever to pull. DEAD is dead — move on.</p>
+
+</section>
+
+
+<section id="trial-and-subscription">
+  <h1><span class="section-num">11.</span> Your Trial and Subscription</h1>
+  
+<h2>11.1 The Free Trial</h2>
+<p>Every new account starts with 5 free AI deal analyses. No credit card, no time limit. The trial counter only goes up when you use AI on a deal — it does NOT go up when you just create a deal manually.</p>
+<p>Practical implication: you can store and analyze up to 8 deals on the free tier using manual entry alone, RentCast comps, and your own scope of work. The 5 trial slots are specifically for AI walkthrough analyses (photos, audio, video, smart mode).</p>
+<div class="callout">
+<div class="callout-label">Re-running AI on the same deal is free</div>
+<p>The trial counter only increments on the FIRST AI use per deal. If you re-run analysis on a deal you've already used a trial slot on, it doesn't cost you another slot.</p>
+</div>
+
+<h2>11.2 The 8-Deal Free-Tier Storage Limit</h2>
+<p>Free accounts can store up to 8 deals at a time. If you try to create a 9th, you'll see a Deal Limit modal with two options:</p>
+<ul>
+<li><strong>Upgrade</strong> — go to a paid plan with unlimited deals.</li>
+<li><strong>Manage Deals</strong> — go to Settings to delete deals you no longer need.</li>
+</ul>
+
+<h2>11.3 Hitting the 5/5 Trial Wall</h2>
+<p>When you click "Add Deal" with 5 of 5 AI analyses already used, you'll see a Trial Exhausted modal with three options:</p>
+<ul>
+<li><strong>Upgrade</strong> — pick Monthly or Annual.</li>
+<li><strong>Continue Without AI</strong> — create the deal manually. The deal is flagged as "AI Locked" and AI features are visually disabled, but everything else works (comps, scope manual entry, lender packet, etc.).</li>
+<li><strong>Cancel</strong> — back out.</li>
+</ul>
+
+<h2>11.4 The Investor Tiers</h2>
+<table>
+<thead><tr><th>Plan</th><th>Includes</th></tr></thead>
+<tbody>
+<tr><td>Investor — Monthly $49</td><td>Unlimited AI analyses, unlimited deals, all features, cross-device sync, cloud storage. Self-serve subscription management.</td></tr>
+<tr><td>Investor — Annual $468</td><td>Same as Monthly, $39/month equivalent. 20% savings. Annual subscriptions run for the full 12-month term and are non-refundable mid-term.</td></tr>
+</tbody>
+</table>
+
+<h2>11.5 Promo Codes</h2>
+<p>FlipLogic supports promo codes during checkout — they're entered on the Stripe checkout page, not in the app itself. Codes are first-time-order only and apply to monthly plans.</p>
+
+<h2>11.6 Managing Your Subscription</h2>
+<p>Once you're on a paid plan, go to <strong>Settings → Subscription</strong>. You'll see a <strong>Manage Subscription</strong> button that opens the Stripe Customer Portal in a new tab. From there you can:</p>
+<ul>
+<li>Update your payment method.</li>
+<li>Upgrade from Monthly to Annual (proration handled automatically). Annual subscribers stay on Annual through the end of their term.</li>
+<li>Cancel your subscription (you keep access until the end of your billing period).</li>
+<li>Download invoices and receipts.</li>
+</ul>
+<p>If you cancel, your Settings → Subscription panel will show a yellow notice: "Your subscription cancels on [date]." You'll keep full access until that date — no rush, nothing to do.</p>
+
+<h2>11.7 The AI Lock</h2>
+<p>Deals created via Continue Without AI are marked AI Locked. On those specific deals:</p>
+<ul>
+<li>AI Walkthrough modes are visually disabled with an upgrade prompt.</li>
+<li>RentCast auto-pull buttons on the Comps and Rental Pivot tabs are disabled — but you can still add comps and rental data manually.</li>
+<li>Everything else (Deal Analysis, Scope of Work, Stress Test, Lender Packet) works normally.</li>
+</ul>
+<p>Upgrading unlocks AI features across all your deals immediately. You don't lose anything by creating a deal in AI-locked mode — upgrade later and the deal is fully functional.</p>
+
+</section>
+
+
+<section id="account-and-settings">
+  <h1><span class="section-num">12.</span> Account and Settings</h1>
+  
+<p>Tap the gear icon (⚙) in the sidebar header to open Settings. Settings has five sections.</p>
+
+<h2>12.1 Account</h2>
+<p>Shows your email and account details. This is where account info will live as more options are added.</p>
+
+<h2>12.2 Change Password</h2>
+<p>Change your password without leaving the app:</p>
+<ol>
+<li>Enter your current password (for verification).</li>
+<li>Enter your new password twice (in the new password and confirm fields).</li>
+<li>Tap Save.</li>
+</ol>
+
+<h2>12.3 Subscription</h2>
+<p>Shows your current plan (Free Trial, Investor Monthly, or Investor Annual), your trial usage, and a Manage Subscription button if you're on a paid plan. If your subscription is set to cancel, you'll see a yellow indicator with the cancellation date.</p>
+
+<h2>12.4 Manage Deals</h2>
+<p>Lists every deal in your account. From here you can delete any deal — including the demo deal once you don't need it anymore.</p>
+<p>Each deal in the list shows its address and any badges that apply:</p>
+<ul>
+<li><strong style="color: #C77E00;">DEMO DEAL</strong> — the sample deal that shipped with your account.</li>
+<li><strong>AI LOCKED</strong> — a deal created via "Continue without AI."</li>
+</ul>
+<div class="callout">
+<div class="callout-label">Deletion is permanent</div>
+<p>Deleting a deal removes it from your account and from cloud storage. There is no undo. The Delete Confirmation modal makes you confirm before any deletion, with Cancel as the default focus and Delete as the red destructive button.</p>
+</div>
+
+<h2>12.5 Sign Out</h2>
+<p>Signs you out of FlipLogic on this device. Your deals stay safe in the cloud — sign back in any time, on any device.</p>
+
+<h2>12.6 Forgot Password</h2>
+<p>On the login screen, tap <strong>Forgot Password</strong> to reset:</p>
+<ol>
+<li>Enter the email address on your account.</li>
+<li>Check your inbox for a reset link from FlipLogic / Supabase.</li>
+<li>Tap the link, enter your new password, and you're back in.</li>
+</ol>
+<div class="callout">
+<div class="callout-label">If you don't get the email</div>
+<p>Check your spam folder. If you've requested several resets in a short time, your provider may have rate-limited the email. Wait an hour and try again, or contact <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a>.</p>
+</div>
+
+</section>
+
+
+<section id="tips-and-best-practices">
+  <h1><span class="section-num">13.</span> Tips and Best Practices</h1>
+  
+<h2>13.1 Get Specs In First</h2>
+<p>Before you pull comps or run AI analysis, fill in your Property Specs. Beds, baths, and especially square footage drive everything — comp matching, ARV per-sqft weighting, AI cost estimates. Five minutes of accuracy here saves a lot of confusion later.</p>
+
+<h2>13.2 Use Multiple Sources Deliberately</h2>
+<p>Don't just settle on the first number you got. Set an Initial Estimate, run an AI walkthrough, and pull RentCast comps. Compare. When the three sources agree, your confidence is high. When they disagree, that's a signal to dig deeper before committing capital.</p>
+
+<h2>13.3 The 70% MAO Rule Is a Default, Not a Law</h2>
+<p>70% is the industry standard because it bakes in margin for surprises — and surprises happen. Adjust the MAO percentage when you have a real reason: cheap capital, high-confidence ARV, partner equity, conservative market. Don't adjust it just because a deal doesn't pencil.</p>
+
+<h2>13.4 Always Stress Test Tight Deals</h2>
+<p>If your base-case ROI is 12% (WARM territory), spend a minute on the Stress Test tab before signing anything. A WARM deal can become DEAD with a 5% ARV pullback and a 15% rehab overrun — both of which are common.</p>
+
+<h2>13.5 Get Blind Bids</h2>
+<p>Use the Blind SOW Print feature. Hand the same scope sheet to three contractors. The bids you get back will be more honest, and you'll get a real spread to negotiate from.</p>
+
+<h2>13.6 Use the Demo Deal as a Reference</h2>
+<p>Your account starts with a Demo Deal already loaded. It's pre-populated with sample data and is excluded from the AI trial counter — explore every tab, click every button, and break things on the demo without consequences.</p>
+
+<h2>13.7 Field Notes Earn Their Keep Six Months Later</h2>
+<p>Use the Field Notes section liberally. "Seller is motivated, divorce situation" or "agent said two other offers" or "foundation crack — get inspector" are the kinds of things you forget by the time you're underwriting again next quarter. Future-you will thank present-you.</p>
+
+</section>
+
+
+<section id="faq">
+  <h1><span class="section-num">14.</span> Frequently Asked Questions</h1>
+  
+<h3>Does FlipLogic AI work on my phone?</h3>
+<p>Yes. FlipLogic AI is fully responsive — it works on any modern web browser on iOS or Android, including the AI Walkthrough recording features. It also works on tablets and desktops.</p>
+
+<h3>Do I need an Anthropic, Deepgram, or RentCast API key?</h3>
+<p>No. Those services are integrated into the platform — you don't need any API keys. Your subscription covers usage.</p>
+
+<h3>Is my data backed up?</h3>
+<p>Yes. All deals, comps, scope items, and walkthrough findings are stored in our cloud database with automatic syncing across your devices. If you delete a deal, it is permanently gone — there's no undo button.</p>
+
+<h3>Can I share deals with a partner?</h3>
+<p>Not yet. Deal sharing is on the roadmap as part of a future Coach tier. For now, the Lender Packet (printed or saved as PDF) is the cleanest way to share a deal.</p>
+
+<h3>Why does my MAO change when I switch the rehab source?</h3>
+<p>Because MAO is calculated from your active rehab cost. (ARV × MAO %) − Rehab. If you switch from a $30,000 Initial Estimate to a $42,000 AI Walkthrough total, MAO drops by $12,000. That's the whole point of multi-source switching — your offer adjusts in real time as your rehab understanding firms up.</p>
+
+<h3>What happens to my deals if I cancel my subscription?</h3>
+<p>Your deals stay in your account. You'll keep access through the end of your billing period. After that, your account reverts to free-tier limits (8 stored deals, AI features locked on new deals). Existing deals remain visible — no data is deleted.</p>
+
+<h3>Can I use FlipLogic for rentals only?</h3>
+<p>It's optimized for fix-and-flip, but the Rental Pivot tab gives you DSCR, cash flow, and rental comps — enough to evaluate a buy-and-hold. If your portfolio is rental-only, you'll be using a subset of the app.</p>
+
+<h3>How accurate are the AI cost estimates?</h3>
+<p>They're regionally informed and grounded in property age (year built), but they're estimates. Use them as a starting point. For final numbers, especially on bigger items (kitchens, bathrooms, mechanicals, roofs), get contractor bids.</p>
+
+<h3>What if I disagree with a comp RentCast pulled?</h3>
+<p>Edit it or delete it on the Comps tab. You can adjust the weight, change the price, or remove a comp entirely. Add your own comps too if you know about sales RentCast missed.</p>
+
+<h3>Can I export my deals as a spreadsheet?</h3>
+<p>Not currently — true spreadsheet export and PDF export (beyond the browser print dialog) are on the backlog.</p>
+
+</section>
+
+
+<section id="glossary">
+  <h1><span class="section-num">15.</span> Glossary</h1>
+  
+<table class="glossary">
+<thead><tr><th>Term</th><th>Definition</th></tr></thead>
+<tbody>
+<tr><td>ARV</td><td>After-Repair Value. The price the property will sell for once rehab is complete.</td></tr>
+<tr><td>AI Walkthrough</td><td>FlipLogic's AI feature that turns photos, audio, video, or smart-mode capture into a scope of work.</td></tr>
+<tr><td>AI Locked</td><td>A deal created via 'Continue without AI' on the free tier. AI features are disabled on that specific deal until upgrade.</td></tr>
+<tr><td>Blind SOW</td><td>A printed scope of work that excludes your cost estimates, used to get honest contractor bids.</td></tr>
+<tr><td>Buy Closing Costs</td><td>Title, escrow, recording, and lender fees on the purchase side.</td></tr>
+<tr><td>Cash Flow</td><td>Monthly rent minus monthly expenses minus monthly loan payment. Positive means the property pays you.</td></tr>
+<tr><td>Comp</td><td>A comparable sale — a recent sale of a similar nearby property used to estimate ARV.</td></tr>
+<tr><td>DSCR</td><td>Debt-Service Coverage Ratio. Net operating income divided by debt service. 1.20+ is the typical lender threshold.</td></tr>
+<tr><td>Deal Score</td><td>FlipLogic's automatic rating: HOT, WARM, COLD, or DEAD, based on ROI, LTV, and profit.</td></tr>
+<tr><td>DEMO DEAL</td><td>The sample deal that ships with your account. Excluded from the AI trial counter.</td></tr>
+<tr><td>Field Notes</td><td>Free-form notes section on the Deal Analysis tab.</td></tr>
+<tr><td>Hold Period</td><td>How long you expect to own the property before resale, used to calculate holding costs.</td></tr>
+<tr><td>Lender Packet</td><td>A professional summary document of your deal, ready to send to a lender or partner.</td></tr>
+<tr><td>LTC</td><td>Loan-to-Cost. Loan amount divided by total project cost.</td></tr>
+<tr><td>LTV</td><td>Loan-to-Value. Loan amount divided by ARV.</td></tr>
+<tr><td>MAO</td><td>Maximum Allowable Offer. The highest price you can pay and still hit your target margin.</td></tr>
+<tr><td>MAO %</td><td>The percentage used in the MAO formula. Default 70%.</td></tr>
+<tr><td>Manual Override</td><td>A rehab cost source where you enter a fixed number you want to use (e.g., a contractor's bid).</td></tr>
+<tr><td>Multi-Source Switching</td><td>FlipLogic's design pattern of tracking multiple rehab and ARV sources and letting you pick which one drives downstream calculations.</td></tr>
+<tr><td>Net Profit</td><td>Gross profit minus closing costs and holding costs. The money you actually walk away with.</td></tr>
+<tr><td>Rehab Source</td><td>Which of the three rehab cost sources (Initial Estimate, AI Walkthrough, Manual Override) is currently driving downstream numbers.</td></tr>
+<tr><td>Rental Pivot</td><td>Switching the deal's analysis lens from flip to rental, using DSCR and cash flow.</td></tr>
+<tr><td>RentCast</td><td>FlipLogic's data partner for sale comps and rental comps.</td></tr>
+<tr><td>ROI</td><td>Return on Investment. Net profit divided by total project cost, as a percentage.</td></tr>
+<tr><td>Scope of Work (SOW)</td><td>Line-item list of rehab tasks and costs.</td></tr>
+<tr><td>Sell Closing Costs</td><td>Agent commissions, transfer taxes, etc. on the resale side.</td></tr>
+<tr><td>Stress Test</td><td>Running best-case, base-case, and worst-case scenarios on a deal.</td></tr>
+<tr><td>Trial Slot</td><td>One of your 5 free AI analyses. Only used on the FIRST AI run per deal.</td></tr>
+<tr><td>Year Built Gate</td><td>The required entry of property year built before AI analysis runs, to inform cost accuracy.</td></tr>
+</tbody>
+</table>
+
+</section>
+
+
+<section id="troubleshooting">
+  <h1><span class="section-num">16.</span> Troubleshooting and Getting Help</h1>
+  
+<h2>16.1 Common Issues</h2>
+
+<h3>My screen went dark while recording — did I lose my walkthrough?</h3>
+<p>FlipLogic uses a wake lock to keep your screen on during recording. If the screen does sleep (different devices behave differently), the offline vault feature stores your recording locally. When you return to the app, it should sync and process automatically. If you lose work, contact support.</p>
+
+<h3>My RentCast comps look wrong — too high, too low, or way off.</h3>
+<p>Two things to check first:</p>
+<ol>
+<li>Are your Property Specs filled in correctly? RentCast weights comps by similarity to your subject. Wrong specs = wrong comps.</li>
+<li>Are you in a market with thin recent sales? In rural or low-volume areas, RentCast may pull comps that are technically nearby but not really comparable.</li>
+</ol>
+<p>If the comps look bad, edit or delete them on the Comps tab and add manual comps from your own research.</p>
+
+<h3>The AI walkthrough returned scope items that don't make sense.</h3>
+<p>This can happen with very short audio, blurry photos, or video that didn't capture the actual condition. Try:</p>
+<ul>
+<li>Re-running with longer / clearer audio (audio mode).</li>
+<li>Re-running with more photos showing each room (photos mode).</li>
+<li>Switching to Smart Mode for a thorough mixed audio/video walkthrough.</li>
+</ul>
+<p>Re-running on a deal you've already used a trial slot on doesn't cost you another trial slot.</p>
+
+<h3>I forgot my password and the reset email never arrived.</h3>
+<p>Check your spam folder. If you've requested several resets in a short window, the email service may have rate-limited the address. Wait an hour and try again. If it still doesn't arrive, email <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a>.</p>
+
+<h3>I can't find a deal I created.</h3>
+<p>Open the sidebar — your deals are listed there in the order they were created. If you don't see it, make sure you're signed in to the same account. If a deal seems to have disappeared, contact support and we'll investigate.</p>
+
+<h3>My subscription was charged but the app still shows me on Free Trial.</h3>
+<p>Subscription updates are pushed live to the app via webhook, but if you navigated away during checkout the app might not have refetched. Try refreshing the page or signing out and back in. If the issue persists, contact support with your transaction date — we can fix it on the back end immediately.</p>
+
+<h2>16.2 Getting Help</h2>
+<p>There are two ways to reach us:</p>
+<ul>
+<li><strong>In-app:</strong> Tap the question mark icon (?) in the sidebar header to open the Help &amp; Support page. You'll find quick answers and a contact button there.</li>
+<li><strong>Email:</strong> Send any question, bug report, or feedback to <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a>. During the beta period, your feedback shapes the product directly.</li>
+</ul>
+
+<h2>16.3 Beta Notes</h2>
+<p>FlipLogic AI is currently in an active beta phase. A few things worth knowing:</p>
+<ul>
+<li>RentCast is limited to one pull per deal during beta to protect shared API credits. Pull when your specs are accurate.</li>
+<li>Bug reports and feature suggestions during beta are reviewed personally and often get acted on within days.</li>
+<li>The product roadmap is public to beta testers — if you have a strong opinion about what should be built next, send it. It probably will be.</li>
+</ul>
+
+</section>
+
+
+  </main>
+
+</div>
+
+<footer class="footer">
+  <p><strong>FlipLogic AI</strong> · <a href="https://fliplogic.ai">fliplogic.ai</a> · <a href="mailto:support@fliplogic.ai">support@fliplogic.ai</a></p>
+  <p>© 2026 FlipLogic AI. All rights reserved.</p>
+</footer>
+
+<script>
+  // Highlight active section in sidebar as user scrolls
+  (function() {
+    var sections = document.querySelectorAll('section[id]');
+    var links = document.querySelectorAll('.sidebar a');
+    var linkMap = {};
+    links.forEach(function(l) {
+      var id = l.getAttribute('href').slice(1);
+      linkMap[id] = l;
+    });
+
+    function setActive(id) {
+      links.forEach(function(l) { l.classList.remove('active'); });
+      if (linkMap[id]) linkMap[id].classList.add('active');
+    }
+
+    var observer = new IntersectionObserver(function(entries) {
+      var visible = entries.filter(function(e) { return e.isIntersecting; });
+      if (visible.length) {
+        // Pick the topmost visible section
+        visible.sort(function(a, b) {
+          return a.boundingClientRect.top - b.boundingClientRect.top;
+        });
+        setActive(visible[0].target.id);
+      }
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+
+    sections.forEach(function(s) { observer.observe(s); });
+
+    // Close mobile menu on link click
+    links.forEach(function(l) {
+      l.addEventListener('click', function() {
+        if (window.innerWidth <= 900) {
+          document.querySelector('.sidebar').classList.remove('open');
+        }
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>

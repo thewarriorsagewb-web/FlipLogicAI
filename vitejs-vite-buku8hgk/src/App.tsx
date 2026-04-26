@@ -339,7 +339,8 @@ function AuthScreen({ onAuth, onForgotPassword }: { onAuth: () => void; onForgot
   }, []);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", padding: narrow ? "16px 12px" : 0, boxSizing: "border-box" }}>
+    <div style={{ minHeight: "100vh", background: "#060b14", display: "flex", flexDirection: "column", fontFamily: "'Syne', sans-serif", boxSizing: "border-box" }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: narrow ? "16px 12px" : 0, boxSizing: "border-box" }}>
       <div style={{ width: "100%", maxWidth: 400, padding: narrow ? "28px 20px" : 40, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12, boxSizing: "border-box" }}>
         <div style={{ textAlign: "center", marginBottom: narrow ? 24 : 32 }}>
           <div style={{ fontSize: narrow ? 24 : 28, fontWeight: 800, color: "#f1f5f9", marginBottom: 6 }}>
@@ -394,6 +395,18 @@ function AuthScreen({ onAuth, onForgotPassword }: { onAuth: () => void; onForgot
         <div style={{ marginTop: 20, fontSize: 11, color: "#334155", textAlign: "center", lineHeight: 1.6 }}>
           Your deals are encrypted and synced across all your devices.
         </div>
+      </div>
+      </div>
+      <div style={{ fontSize: 11, color: "#64748b", textAlign: "center", padding: "0 16px 20px", lineHeight: 1.6 }}>
+        Legal:{" "}
+        <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "#64748b", textDecoration: "underline" }}>
+          Privacy Policy
+        </a>
+        {" "}
+        ·{" "}
+        <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#64748b", textDecoration: "underline" }}>
+          Terms of Service
+        </a>
       </div>
     </div>
   );
@@ -2260,9 +2273,33 @@ function HelpSupportPage({ onBack }: { onBack: () => void }) {
       </div>
 
       <div style={{ ...section, background: "rgba(59,130,246,0.08)" }}>
-        <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.55 }}>
-          📖 A comprehensive User Guide is coming soon. In the meantime, email us at support@fliplogic.ai with any questions about specific features or workflows — we&apos;re happy to help.
+        <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.55, marginBottom: 12 }}>
+          📖 For step-by-step workflows and feature walkthroughs, use the full guide below. You can also email us at support@fliplogic.ai for questions about your deals.
         </div>
+        <a
+          href="/userguide"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: "block",
+            textAlign: "center",
+            width: "100%",
+            boxSizing: "border-box",
+            background: "linear-gradient(135deg, #1d4ed8, #1e40af)",
+            border: "none",
+            borderRadius: 8,
+            color: "#fff",
+            padding: "12px 16px",
+            minHeight: 48,
+            fontSize: 14,
+            fontWeight: 700,
+            textDecoration: "none",
+            fontFamily: "'Syne', sans-serif",
+            lineHeight: 1.25,
+          }}
+        >
+          Open the Comprehensive User Guide
+        </a>
       </div>
 
       <div style={section}>
@@ -2270,6 +2307,18 @@ function HelpSupportPage({ onBack }: { onBack: () => void }) {
         <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6, fontStyle: "italic" }}>
           FlipLogic AI is in active beta. Your feedback shapes the product — bug reports, feature requests, and &quot;this confused me&quot; moments are all welcome. Email support@fliplogic.ai with anything you&apos;d like to share.
         </div>
+      </div>
+
+      <div style={{ fontSize: 12, color: "#64748b", textAlign: "center", marginTop: 8, paddingBottom: 4, lineHeight: 1.6 }}>
+        Legal:{" "}
+        <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "#64748b", textDecoration: "underline" }}>
+          Privacy Policy
+        </a>
+        {" "}
+        ·{" "}
+        <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#64748b", textDecoration: "underline" }}>
+          Terms of Service
+        </a>
       </div>
     </div>
   );
