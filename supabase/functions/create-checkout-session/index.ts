@@ -8,7 +8,7 @@ const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const DEFAULT_RETURN_URL = "https://charming-pudding-d20567.netlify.app";
+const DEFAULT_RETURN_URL = "https://fliplogic.ai";
 
 const VALID_LOOKUP_KEYS = new Set(["investor_monthly", "investor_annual"]);
 
