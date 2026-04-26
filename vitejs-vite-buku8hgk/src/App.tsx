@@ -383,16 +383,39 @@ function AuthScreen({ onAuth, onForgotPassword }: { onAuth: () => void; onForgot
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [termsAgreed, setTermsAgreed] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
+  const [termsRequiredError, setTermsRequiredError] = useState(false);
 
   const handleSubmit = async () => {
     if (!email || !password) { setError("Please enter email and password."); return; }
-    setLoading(true); setError(""); setMessage("");
+    if (mode === "signup") {
+      if (!termsAgreed) {
+        setTermsRequiredError(true);
+        return;
+      }
+    }
+    setLoading(true); setError(""); setMessage(""); setTermsRequiredError(false);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
+        const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+        if (signUpError) throw signUpError;
+        if (data.user && marketingOptIn) {
+          const { error: subError } = await supabase
+            .from("subscriptions")
+            .update({
+              marketing_emails_opted_in: true,
+              marketing_opt_in_at: new Date().toISOString(),
+            })
+            .eq("user_id", data.user.id);
+          if (subError) {
+            console.error("subscriptions marketing opt-in update:", subError);
+          }
+        }
         setMessage("Account created! Please check your email to verify your account, then sign in below.");
         setMode("signin");
+        setTermsAgreed(false);
+        setMarketingOptIn(false);
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -426,7 +449,7 @@ function AuthScreen({ onAuth, onForgotPassword }: { onAuth: () => void; onForgot
 
         <div style={{ display: "flex", marginBottom: 24, background: "#060b14", borderRadius: 8, padding: 4 }}>
           {(["signin", "signup"] as const).map((m) => (
-            <button key={m} onClick={() => { setMode(m); setError(""); setMessage(""); }}
+            <button key={m} onClick={() => { setMode(m); setError(""); setMessage(""); setTermsAgreed(false); setMarketingOptIn(false); setTermsRequiredError(false); }}
               style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.05em",
                 background: mode === m ? "#1d4ed8" : "transparent", color: mode === m ? "#fff" : "#475569" }}>
               {m === "signin" ? "SIGN IN" : "CREATE ACCOUNT"}
@@ -461,11 +484,89 @@ function AuthScreen({ onAuth, onForgotPassword }: { onAuth: () => void; onForgot
           </button>
         )}
 
+        {mode === "signup" && (
+          <div style={{ marginBottom: 12 }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                minHeight: 44,
+                padding: "6px 0",
+                marginBottom: termsRequiredError ? 6 : 0,
+                cursor: "pointer",
+                boxSizing: "border-box",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={termsAgreed}
+                onChange={(e) => {
+                  setTermsAgreed(e.target.checked);
+                  if (e.target.checked) setTermsRequiredError(false);
+                }}
+                style={{ width: 18, height: 18, marginTop: 2, flexShrink: 0, cursor: "pointer", accentColor: "#3b82f6" }}
+              />
+              <span style={{ fontSize: 13, color: "#e2e8f0", lineHeight: 1.5, fontWeight: 500 }}>
+                I agree to the{" "}
+                <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", textDecoration: "underline" }}>Terms of Service</a>
+                {" "}and{" "}
+                <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", textDecoration: "underline" }}>Privacy Policy</a>
+                .
+              </span>
+            </label>
+            {termsRequiredError ? (
+              <div style={{ fontSize: 12, color: "#f87171", marginLeft: 28, lineHeight: 1.4 }}>
+                You must agree to the Terms of Service and Privacy Policy to create an account.
+              </div>
+            ) : null}
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                minHeight: 44,
+                padding: "6px 0",
+                marginTop: 4,
+                cursor: "pointer",
+                boxSizing: "border-box",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={marketingOptIn}
+                onChange={(e) => setMarketingOptIn(e.target.checked)}
+                style={{ width: 18, height: 18, marginTop: 2, flexShrink: 0, cursor: "pointer", accentColor: "#3b82f6" }}
+              />
+              <span style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5, fontWeight: 400 }}>
+                Send me product updates, tips, and announcements from FlipLogic AI. (Optional — you can unsubscribe anytime.)
+              </span>
+            </label>
+          </div>
+        )}
+
         {error && <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 14 }}>{error}</div>}
         {message && <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#22c55e", marginBottom: 14 }}>{message}</div>}
 
-        <button type="button" onClick={handleSubmit} disabled={loading}
-          style={{ width: "100%", background: loading ? "#1e293b" : "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: narrow ? "14px 0" : "12px 0", minHeight: narrow ? 48 : undefined, fontSize: narrow ? 14 : 13, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", letterSpacing: "0.05em" }}>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={loading || (mode === "signup" && !termsAgreed)}
+          style={{
+            width: "100%",
+            background: (loading || (mode === "signup" && !termsAgreed)) ? "#1e293b" : "linear-gradient(135deg, #1d4ed8, #1e40af)",
+            border: "none",
+            borderRadius: 8,
+            color: (loading || (mode === "signup" && !termsAgreed)) ? "#94a3b8" : "#fff",
+            padding: narrow ? "14px 0" : "12px 0",
+            minHeight: narrow ? 48 : undefined,
+            fontSize: narrow ? 14 : 13,
+            fontWeight: 700,
+            cursor: (loading || (mode === "signup" && !termsAgreed)) ? "not-allowed" : "pointer",
+            fontFamily: "'Syne', sans-serif",
+            letterSpacing: "0.05em",
+          }}
+        >
           {loading ? "Please wait..." : mode === "signin" ? "SIGN IN" : "CREATE ACCOUNT"}
         </button>
 

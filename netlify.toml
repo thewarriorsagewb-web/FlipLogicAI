@@ -2,3 +2,8 @@
 base = "vitejs-vite-buku8hgk"
 command = "tsc -b && vite build"
 publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
