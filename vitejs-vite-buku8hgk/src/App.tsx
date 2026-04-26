@@ -1943,9 +1943,29 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, on
       <div style={{ padding: "12px 14px", borderTop: "1px solid #1e293b", flexShrink: 0 }}>
         <div style={{ fontSize: 10, color: syncing ? "#a3a3a3" : "#94a3b8", marginBottom: 8, textAlign: "center" }}>{syncing ? "⟳ Saving..." : "✓ Synced to cloud"}</div>
       </div>
-      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid #1e293b", flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-        <button type="button" onClick={() => { onOpenHelp(); if (isDrawer) onCloseDrawer?.(); }} style={{ background: "transparent", border: "none", color: "#94a3b8", padding: 0, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif", textAlign: "left" }}>Help & Support</button>
-        <button type="button" onClick={() => { onOpenSettings(); if (isDrawer) onCloseDrawer?.(); }} style={{ background: "transparent", border: "none", color: "#94a3b8", padding: 0, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif", textAlign: "left" }}>Settings</button>
+      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid #1e293b", flexShrink: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+        <button
+          type="button"
+          onClick={() => { onOpenHelp(); if (isDrawer) onCloseDrawer?.(); }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "#0f172a"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          onMouseDown={(e) => { e.currentTarget.style.background = "#111c31"; }}
+          onMouseUp={(e) => { e.currentTarget.style.background = "#0f172a"; }}
+          style={{ width: "100%", minHeight: 44, background: "transparent", border: "none", borderRadius: 6, color: "#94a3b8", padding: "0 16px", fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif", textAlign: "left" }}
+        >
+          Help & Support
+        </button>
+        <button
+          type="button"
+          onClick={() => { onOpenSettings(); if (isDrawer) onCloseDrawer?.(); }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "#0f172a"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          onMouseDown={(e) => { e.currentTarget.style.background = "#111c31"; }}
+          onMouseUp={(e) => { e.currentTarget.style.background = "#0f172a"; }}
+          style={{ width: "100%", minHeight: 44, background: "transparent", border: "none", borderRadius: 6, color: "#94a3b8", padding: "0 16px", fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif", textAlign: "left" }}
+        >
+          Settings
+        </button>
       </div>
     </div>
   );
