@@ -300,6 +300,81 @@ Deno.serve(async (req: Request) => {
         break;
       }
 
+      case "charge.refunded": {
+        try {
+          const charge = event.data.object as Stripe.Charge;
+          console.log(
+            `Processing charge.refunded for charge ${charge.id}, customer ${String(charge.customer)}, amount_refunded=${charge.amount_refunded}/${charge.amount}`,
+          );
+
+          const isFullRefund = charge.amount_refunded >= charge.amount;
+          if (!isFullRefund) {
+            console.log(
+              `Partial refund detected for charge ${charge.id} (${charge.amount_refunded}/${charge.amount}). No action taken — subscription access preserved.`,
+            );
+            break;
+          }
+
+          const customerId = typeof charge.customer === "string" ? charge.customer : charge.customer?.id;
+          if (!customerId) {
+            console.warn(`charge.refunded missing customer id for charge ${charge.id}; skipping downgrade`);
+            break;
+          }
+
+          const { data: subRow, error: subLookupError } = await supabase
+            .from("subscriptions")
+            .select("user_id, stripe_subscription_id, status")
+            .eq("stripe_customer_id", customerId)
+            .maybeSingle();
+          if (subLookupError) {
+            throw new Error(`subscriptions lookup by stripe_customer_id: ${subLookupError.message}`);
+          }
+          if (!subRow) {
+            console.warn(`charge.refunded for unknown customer ${customerId}; no subscriptions row found`);
+            break;
+          }
+
+          const userId = subRow.user_id as string;
+          const stripeSubscriptionId = subRow.stripe_subscription_id as string | null;
+          const dbStatus = String(subRow.status ?? "");
+          if (
+            stripeSubscriptionId &&
+            (dbStatus === "active" || dbStatus === "trial" || dbStatus === "trialing")
+          ) {
+            try {
+              await stripe.subscriptions.cancel(stripeSubscriptionId);
+            } catch (cancelErr: unknown) {
+              console.error(
+                `charge.refunded: failed to cancel Stripe subscription ${stripeSubscriptionId} for user ${userId}; continuing with DB downgrade`,
+                cancelErr,
+              );
+              if (cancelErr instanceof Error && cancelErr.stack) console.error(cancelErr.stack);
+            }
+          }
+
+          const { error: downgradeError } = await supabase
+            .from("subscriptions")
+            .update({
+              status: "canceled",
+              plan: "free",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("user_id", userId);
+          if (downgradeError) {
+            throw new Error(`subscriptions update (charge.refunded downgrade): ${downgradeError.message}`);
+          }
+
+          console.log(
+            `Full refund processed for user ${userId}: subscription ${stripeSubscriptionId ?? "none"} canceled, Supabase row downgraded to free`,
+          );
+        } catch (e: unknown) {
+          console.error("charge.refunded handler error:", e);
+          if (e instanceof Error && e.stack) console.error(e.stack);
+          throw e;
+        }
+        break;
+      }
+
       default: {
         console.log("Unhandled event type:", event.type);
         return new Response(JSON.stringify({ received: true }), {
