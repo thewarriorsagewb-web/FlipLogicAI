@@ -1874,10 +1874,10 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo, isMobi
 }
 
 // ─── Deals Sidebar ────────────────────────────────────────────────────────────
-function DealsSidebar({ deals, activeDealId, onSelect, onNew, userEmail, onSignOut, onOpenSettings, syncing, subscriptionPanel, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
+function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, onOpenHelp, syncing, upgradePanel, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
   deals: Deal[]; activeDealId: string; onSelect: (id: string) => void; onNew: () => boolean | Promise<boolean>;
-  userEmail: string; onSignOut: () => void; onOpenSettings: () => void; syncing: boolean;
-  subscriptionPanel?: ReactNode;
+  onOpenSettings: () => void; onOpenHelp: () => void; syncing: boolean;
+  upgradePanel?: ReactNode;
   variant?: "sidebar" | "drawer"; drawerOpen?: boolean; onCloseDrawer?: () => void;
 }) {
   const isDrawer = variant === "drawer";
@@ -1916,6 +1916,7 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, userEmail, onSignO
         >
           + NEW DEAL
         </button>
+        {upgradePanel ? <div style={{ marginTop: 10 }}>{upgradePanel}</div> : null}
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
         {deals.map((deal) => {
@@ -1939,16 +1940,12 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, userEmail, onSignO
           );
         })}
       </div>
-      {subscriptionPanel && (
-        <div style={{ padding: "12px 14px", borderTop: "1px solid #1e293b", flexShrink: 0 }}>
-          {subscriptionPanel}
-        </div>
-      )}
       <div style={{ padding: "12px 14px", borderTop: "1px solid #1e293b", flexShrink: 0 }}>
-        <div style={{ fontSize: 11, color: syncing ? "#f59e0b" : "#22c55e", marginBottom: 6, textAlign: "center" }}>{syncing ? "⟳ Saving..." : "✓ Synced to cloud"}</div>
-        <div style={{ fontSize: 11, color: "#334155", marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>{userEmail}</div>
-        <button type="button" onClick={() => { onOpenSettings(); if (isDrawer) onCloseDrawer?.(); }} style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#475569", padding: "12px 0", minHeight: 44, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8 }}>⚙ Settings</button>
-        <button type="button" onClick={() => { onSignOut(); if (isDrawer) onCloseDrawer?.(); }} style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#475569", padding: "12px 0", minHeight: 44, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>Sign Out</button>
+        <div style={{ fontSize: 10, color: syncing ? "#a3a3a3" : "#94a3b8", marginBottom: 8, textAlign: "center" }}>{syncing ? "⟳ Saving..." : "✓ Synced to cloud"}</div>
+      </div>
+      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid #1e293b", flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+        <button type="button" onClick={() => { onOpenHelp(); if (isDrawer) onCloseDrawer?.(); }} style={{ background: "transparent", border: "none", color: "#94a3b8", padding: 0, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif", textAlign: "left" }}>Help & Support</button>
+        <button type="button" onClick={() => { onOpenSettings(); if (isDrawer) onCloseDrawer?.(); }} style={{ background: "transparent", border: "none", color: "#94a3b8", padding: 0, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif", textAlign: "left" }}>Settings</button>
       </div>
     </div>
   );
@@ -2157,6 +2154,89 @@ function SettingsPage({
       </div>
       <div style={section}>
         <button type="button" onClick={onSignOut} style={{ background: "transparent", border: "1px solid #dc2626", borderRadius: 8, color: "#f87171", padding: "10px 16px", minHeight: 44, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>Sign Out</button>
+      </div>
+    </div>
+  );
+}
+
+function HelpSupportPage({ onBack }: { onBack: () => void }) {
+  const [openFaq, setOpenFaq] = useState<Set<number>>(new Set());
+  const faqs = [
+    {
+      q: "How do I cancel my subscription?",
+      a: "Open Settings → Subscription → Manage Subscription. This opens the Stripe customer portal where you can cancel anytime. Cancellations take effect at the end of your current billing period — you'll continue to have full access until then.",
+    },
+    {
+      q: "I forgot my password. How do I reset it?",
+      a: "On the login screen, tap the 'Forgot password?' link below the password field. Enter your email address — we'll send you a reset link. The email may take a few minutes to arrive. If you don't see it, check your spam folder.",
+    },
+    {
+      q: "Why are AI features locked on some of my deals?",
+      a: "Your free trial includes 5 AI deal analyses. After that, deals you create can still be analyzed manually, but AI features (Walkthrough, RentCast auto-pull) are locked on those new deals. Upgrade to Investor for unlimited AI analyses on all deals.",
+    },
+    {
+      q: "I'm a beta tester from a REIA — how do I redeem my coupon?",
+      a: "Beta tester coupons are entered during checkout. When the paywall appears, click 'Start Monthly Plan' and look for the 'Add promotion code' link on the Stripe checkout page. Enter your coupon code there. If you don't have a coupon yet, contact your REIA host.",
+    },
+  ];
+
+  const toggleFaq = (idx: number) => {
+    setOpenFaq((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const section: CSSProperties = { background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 10, padding: 16, marginBottom: 14 };
+  const heading: CSSProperties = { fontSize: 13, fontWeight: 800, color: "#e2e8f0", marginBottom: 10, letterSpacing: "0.06em", textTransform: "uppercase" };
+
+  return (
+    <div style={{ maxWidth: 860 }}>
+      <button type="button" onClick={onBack} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#94a3b8", padding: "10px 14px", minHeight: 44, fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 16 }}>← Back</button>
+      <div style={{ fontSize: 26, fontWeight: 800, color: "#f1f5f9", marginBottom: 14 }}>Help & Support</div>
+
+      <div style={section}>
+        <div style={heading}>Get in touch</div>
+        <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 12, lineHeight: 1.55 }}>Have a question, found a bug, or need help with a deal? Email us anytime.</div>
+        <a href="mailto:support@fliplogic.ai" style={{ display: "block", textAlign: "center", width: "100%", boxSizing: "border-box", background: "linear-gradient(135deg, #1d4ed8, #1e40af)", border: "none", borderRadius: 8, color: "#fff", padding: "12px 16px", minHeight: 48, fontSize: 14, fontWeight: 700, textDecoration: "none", fontFamily: "'Syne', sans-serif", marginBottom: 8 }}>
+          Email support@fliplogic.ai
+        </a>
+        <div style={{ fontSize: 12, color: "#64748b" }}>We typically respond within 24 hours.</div>
+      </div>
+
+      <div style={section}>
+        <div style={heading}>Quick Answers</div>
+        {faqs.map((f, i) => {
+          const open = openFaq.has(i);
+          return (
+            <div key={f.q} style={{ border: "1px solid #1e293b", borderRadius: 8, marginBottom: 10, background: "#060b14" }}>
+              <button
+                type="button"
+                onClick={() => toggleFaq(i)}
+                style={{ width: "100%", textAlign: "left", background: "transparent", border: "none", color: "#e2e8f0", padding: "12px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Syne', sans-serif", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}
+              >
+                <span>{f.q}</span>
+                <span style={{ color: "#64748b" }}>{open ? "−" : "+"}</span>
+              </button>
+              {open ? <div style={{ padding: "0 14px 12px", fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}>{f.a}</div> : null}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ ...section, background: "rgba(59,130,246,0.08)" }}>
+        <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.55 }}>
+          📖 A comprehensive User Guide is coming soon. In the meantime, email us at support@fliplogic.ai with any questions about specific features or workflows — we&apos;re happy to help.
+        </div>
+      </div>
+
+      <div style={section}>
+        <div style={heading}>Beta Feedback</div>
+        <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6, fontStyle: "italic" }}>
+          FlipLogic AI is in active beta. Your feedback shapes the product — bug reports, feature requests, and &quot;this confused me&quot; moments are all welcome. Email support@fliplogic.ai with anything you&apos;d like to share.
+        </div>
       </div>
     </div>
   );
@@ -2380,6 +2460,7 @@ export default function App() {
   const [paywallReason, setPaywallReason] = useState("");
   const [activityToast, setActivityToast] = useState<{ text: string; ms: number } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [scrollToManageDeals, setScrollToManageDeals] = useState(false);
   const [dealPendingDelete, setDealPendingDelete] = useState<Deal | null>(null);
   const [trialExhaustedOpen, setTrialExhaustedOpen] = useState(false);
@@ -2467,118 +2548,41 @@ export default function App() {
     [deals, user],
   );
 
-  const subscriptionPanel = useMemo(() => {
-    if (subLoading && !subscription) {
-      return <div style={{ fontSize: 11, color: "#64748b" }}>Loading subscription…</div>;
-    }
-    const s = subscription;
-    if (!s) return <div style={{ fontSize: 11, color: "#64748b" }}>Plan unavailable</div>;
-
-    if (s.status === "trial" && !isPayingInvestor) {
-      const used = s.trial_deals_used;
-      const lim = Math.max(1, s.trial_deals_limit);
-      const pct = Math.min(100, (used / lim) * 100);
-      const label = used >= 5 ? "Upgrade & Unlock AI" : "Upgrade to Investor";
-      const solid = used >= 4;
-      return (
-        <div>
-          <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 6 }}>Subscription</div>
-          <div style={{ fontSize: 11, color: "#e2e8f0", fontWeight: 700, marginBottom: 8 }}>
-            FREE TRIAL: {used} of {s.trial_deals_limit} analyses used
-          </div>
-          <div style={{ background: "#1e293b", borderRadius: 4, height: 6, overflow: "hidden", marginBottom: 10 }}>
-            <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg, #3b82f6, #6366f1)", transition: "width 0.3s" }} />
-          </div>
-          <button
-            type="button"
-            onClick={() => openPaywall("Upgrade to FlipLogic AI Investor to unlock AI features.")}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = solid ? "#15803d" : "rgba(22, 163, 34, 0.15)";
-              e.currentTarget.style.borderColor = solid ? "#15803d" : "#16a34a";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = solid ? "#16a34a" : "transparent";
-              e.currentTarget.style.borderColor = "#16a34a";
-            }}
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "10px 16px",
-              borderRadius: 8,
-              fontWeight: 600,
-              fontSize: 12,
-              fontFamily: "'Syne', sans-serif",
-              cursor: "pointer",
-              border: "1px solid #16a34a",
-              color: solid ? "#fff" : "#16a34a",
-              background: solid ? "#16a34a" : "transparent",
-            }}
-          >
-            {label}
-          </button>
-        </div>
-      );
-    }
-    if (s.status === "active" && s.plan === "investor_monthly") {
-      return <div style={{ fontSize: 12, color: "#22c55e", fontWeight: 700 }}>✓ INVESTOR — Monthly</div>;
-    }
-    if (s.status === "active" && s.plan === "investor_annual") {
-      return <div style={{ fontSize: 12, color: "#22c55e", fontWeight: 700 }}>✓ INVESTOR — Annual</div>;
-    }
-    if (s.status === "active") {
-      return <div style={{ fontSize: 12, color: "#22c55e", fontWeight: 700 }}>✓ INVESTOR</div>;
-    }
-    if (s.status === "past_due") {
-      return (
-        <div>
-          <div style={{ fontSize: 11, color: "#fb923c", fontWeight: 800, marginBottom: 8 }}>PAYMENT OVERDUE</div>
-          <button
-            type="button"
-            onClick={() => openPaywall("Update your payment method to keep Investor access.")}
-            style={{
-              width: "100%",
-              background: "#7c2d12",
-              border: "1px solid #ea580c",
-              borderRadius: 6,
-              color: "#ffedd5",
-              padding: "8px 0",
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: "pointer",
-              fontFamily: "'Syne', sans-serif",
-            }}
-          >
-            Update Payment
-          </button>
-        </div>
-      );
-    }
-    if (s.status === "canceled" || s.status === "expired") {
-      return (
-        <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, marginBottom: 8 }}>FREE PLAN</div>
-          <button
-            type="button"
-            onClick={() => openPaywall("Upgrade to unlock AI features.")}
-            style={{
-              width: "100%",
-              background: "#1d4ed8",
-              border: "none",
-              borderRadius: 6,
-              color: "#fff",
-              padding: "8px 0",
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: "pointer",
-              fontFamily: "'Syne', sans-serif",
-            }}
-          >
-            Upgrade
-          </button>
-        </div>
-      );
-    }
-    return <div style={{ fontSize: 11, color: "#64748b" }}>Plan: {s.plan} · {s.status}</div>;
+  const sidebarUpgradePanel = useMemo(() => {
+    if (subLoading && !subscription) return null;
+    if (isPayingInvestor) return null;
+    const used = subscription?.trial_deals_used ?? 0;
+    const label = used >= 5 ? "Upgrade & Unlock AI" : "Upgrade to Investor";
+    const solid = used >= 4;
+    return (
+      <button
+        type="button"
+        onClick={() => openPaywall("Upgrade to FlipLogic AI Investor to unlock AI features.")}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = solid ? "#15803d" : "rgba(22, 163, 34, 0.15)";
+          e.currentTarget.style.borderColor = solid ? "#15803d" : "#16a34a";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = solid ? "#16a34a" : "transparent";
+          e.currentTarget.style.borderColor = "#16a34a";
+        }}
+        style={{
+          width: "100%",
+          boxSizing: "border-box",
+          padding: "10px 16px",
+          borderRadius: 8,
+          fontWeight: 600,
+          fontSize: 12,
+          fontFamily: "'Syne', sans-serif",
+          cursor: "pointer",
+          border: "1px solid #16a34a",
+          color: solid ? "#fff" : "#16a34a",
+          background: solid ? "#16a34a" : "transparent",
+        }}
+      >
+        {label}
+      </button>
+    );
   }, [subscription, subLoading, openPaywall, isPayingInvestor]);
 
   useEffect(() => {
@@ -3118,8 +3122,8 @@ export default function App() {
           }}
         />
       )}
-      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setActiveDealId(id); }} onNew={handleAddDeal} userEmail={user.email} onSignOut={handleSignOut} onOpenSettings={() => setShowSettings(true)} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="sidebar" />}
-      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setActiveDealId(id); }} onNew={handleAddDeal} userEmail={user.email} onSignOut={handleSignOut} onOpenSettings={() => setShowSettings(true)} syncing={syncing} subscriptionPanel={subscriptionPanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
+      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setShowHelp(false); setActiveDealId(id); }} onNew={handleAddDeal} onOpenSettings={() => { setShowHelp(false); setShowSettings(true); }} onOpenHelp={() => { setShowSettings(false); setShowHelp(true); }} syncing={syncing} upgradePanel={sidebarUpgradePanel} variant="sidebar" />}
+      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setShowHelp(false); setActiveDealId(id); }} onNew={handleAddDeal} onOpenSettings={() => { setShowHelp(false); setShowSettings(true); }} onOpenHelp={() => { setShowSettings(false); setShowHelp(true); }} syncing={syncing} upgradePanel={sidebarUpgradePanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", minWidth: 0 }}>
         {/* Header */}
         <div style={{ background: "linear-gradient(135deg, #060b14 0%, #0d1829 100%)", borderBottom: "1px solid #1e293b", padding: isMobile ? "12px 14px" : "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
@@ -3145,7 +3149,7 @@ export default function App() {
           </div>
         </div>
 
-        {!showSettings && (
+        {!showSettings && !showHelp && (
         <>
         {/* Address */}
         <div style={{ padding: isMobile ? "12px 14px" : "10px 24px", background: "#0a0f1a", borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
@@ -3537,6 +3541,11 @@ export default function App() {
               onRequestDeleteDeal={(deal) => setDealPendingDelete(deal)}
               onSignOut={handleSignOut}
             />
+          </div>
+        )}
+        {showHelp && (
+          <div style={{ padding: isMobile ? "16px 14px 24px" : "20px 24px", flex: 1, overflow: "auto" }}>
+            <HelpSupportPage onBack={() => setShowHelp(false)} />
           </div>
         )}
       </div>
