@@ -553,6 +553,53 @@ function MetricCard({ label, value, sub, highlight = false, isMobile = false }: 
   );
 }
 
+function AILockOverlay({
+  message,
+  subtext,
+  onUpgrade,
+}: {
+  message: string;
+  subtext?: string;
+  onUpgrade: () => void;
+}) {
+  return (
+    <div
+      style={{
+        width: "100%",
+        borderRadius: 8,
+        padding: 18,
+        background: "rgba(255, 165, 0, 0.08)",
+        border: "1px solid rgba(255, 165, 0, 0.4)",
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: 26, marginBottom: 8 }}>🔒</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: "#FFA500", marginBottom: 8 }}>{message}</div>
+      <div style={{ fontSize: 13, color: "#ccc", lineHeight: 1.5, marginBottom: 12 }}>
+        {subtext || "Upgrade to Investor for unlimited AI analyses on all your deals."}
+      </div>
+      <button
+        type="button"
+        onClick={onUpgrade}
+        style={{
+          background: "#FFA500",
+          border: "none",
+          borderRadius: 8,
+          color: "#111827",
+          padding: "10px 16px",
+          minHeight: 44,
+          fontSize: 13,
+          fontWeight: 700,
+          cursor: "pointer",
+          fontFamily: "'Syne', sans-serif",
+        }}
+      >
+        Upgrade to Investor
+      </button>
+    </div>
+  );
+}
+
 function ScenarioRow({ scenario, inputs, isMobile = false }: { scenario: Scenario; inputs: DealInputs; isMobile?: boolean }) {
   const m = calculateMetrics({ ...inputs, rehabCost: inputs.rehabCost * scenario.rehabMultiplier, arv: inputs.arv * scenario.arvMultiplier });
   const score = SCORE_STYLES[m.dealScore];
@@ -885,6 +932,15 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
     fontSize: isMobile ? 14 : 13,
     padding: "0 10px",
   };
+
+  if (currentDeal.aiLocked) {
+    return (
+      <AILockOverlay
+        message="AI Walkthrough is locked on this deal"
+        onUpgrade={() => onNeedPaywall("Upgrade to Investor to unlock AI Walkthrough on locked deals")}
+      />
+    );
+  }
 
   return (
     <div>
@@ -1404,27 +1460,35 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
         {!propertyAddress.trim() && (
           <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>Enter a property address in the Deal Analysis tab first</div>
         )}
-        <button
-          type="button"
-          onClick={() => void pullCompsFromRentCast()}
-          disabled={pullingComps || !propertyAddress.trim() || comps.length >= 3}
-          style={{
-            width: isMobile ? "100%" : "auto",
-            background: pullingComps || !propertyAddress.trim() || comps.length >= 3 ? "#1e293b" : "#1d4ed8",
-            border: "none",
-            borderRadius: 8,
-            color: "#fff",
-            padding: isMobile ? "14px 16px" : "10px 18px",
-            minHeight: isMobile ? 48 : 44,
-            fontSize: isMobile ? 14 : 13,
-            fontWeight: 700,
-            cursor: pullingComps || !propertyAddress.trim() || comps.length >= 3 ? "not-allowed" : "pointer",
-            fontFamily: "'Syne', sans-serif",
-            opacity: pullingComps || !propertyAddress.trim() || comps.length >= 3 ? 0.6 : 1,
-          }}
-        >
-          {pullingComps ? "Pulling comps..." : comps.length >= 3 ? "✓ Comps Already Pulled" : "🔄 Auto-Pull Comps from RentCast"}
-        </button>
+        {activeDeal.aiLocked ? (
+          <AILockOverlay
+            message="RentCast auto-pull is locked on this deal"
+            subtext="You can still add comps manually."
+            onUpgrade={() => onNeedPaywall("Upgrade to Investor to unlock RentCast auto-pull")}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => void pullCompsFromRentCast()}
+            disabled={pullingComps || !propertyAddress.trim() || comps.length >= 3}
+            style={{
+              width: isMobile ? "100%" : "auto",
+              background: pullingComps || !propertyAddress.trim() || comps.length >= 3 ? "#1e293b" : "#1d4ed8",
+              border: "none",
+              borderRadius: 8,
+              color: "#fff",
+              padding: isMobile ? "14px 16px" : "10px 18px",
+              minHeight: isMobile ? 48 : 44,
+              fontSize: isMobile ? 14 : 13,
+              fontWeight: 700,
+              cursor: pullingComps || !propertyAddress.trim() || comps.length >= 3 ? "not-allowed" : "pointer",
+              fontFamily: "'Syne', sans-serif",
+              opacity: pullingComps || !propertyAddress.trim() || comps.length >= 3 ? 0.6 : 1,
+            }}
+          >
+            {pullingComps ? "Pulling comps..." : comps.length >= 3 ? "✓ Comps Already Pulled" : "🔄 Auto-Pull Comps from RentCast"}
+          </button>
+        )}
         {pullError && <div style={{ color: "#f87171", fontSize: 13, marginTop: 10 }}>{pullError}</div>}
         {pullSuccess && <div style={{ color: "#22c55e", fontSize: 13, marginTop: 10 }}>{pullSuccess}</div>}
       </div>
@@ -1477,12 +1541,14 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
 }
 
 // ─── Rental Pivot Tab ─────────────────────────────────────────────────────────
-function RentalPivotTab({ inputs, metrics, isMobile = false, rentalComps, setField }: {
+function RentalPivotTab({ inputs, metrics, isMobile = false, rentalComps, setField, activeDeal, onNeedPaywall }: {
   inputs: DealInputs;
   metrics: DealMetrics;
   isMobile?: boolean;
   rentalComps: RentalComp[];
   setField: (key: keyof DealInputs) => (value: number | string) => void;
+  activeDeal: Deal;
+  onNeedPaywall: (reason: string) => void;
 }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 20 : 24 }}>
@@ -1502,6 +1568,15 @@ function RentalPivotTab({ inputs, metrics, isMobile = false, rentalComps, setFie
           <MetricCard label="Net Monthly Cash Flow" value={fmt(inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment)} highlight isMobile={isMobile} />
           <MetricCard label="Annual Cash Flow" value={fmt((inputs.monthlyRent - inputs.monthlyExpenses - metrics.monthlyPayment) * 12)} isMobile={isMobile} />
         </div>
+        {activeDeal.aiLocked ? (
+          <div style={{ marginTop: 16 }}>
+            <AILockOverlay
+              message="RentCast rental data is locked on this deal"
+              subtext="You can still enter rental estimates manually."
+              onUpgrade={() => onNeedPaywall("Upgrade to Investor to unlock RentCast rental data")}
+            />
+          </div>
+        ) : null}
         {rentalComps.length === 0 && (
           <div style={{ marginTop: 16, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16 }}>
             <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
@@ -3403,6 +3478,8 @@ export default function App() {
               isMobile={isMobile}
               rentalComps={activeDeal.rentalComps || []}
               setField={set}
+              activeDeal={activeDeal}
+              onNeedPaywall={openPaywall}
             />
           )}
 
