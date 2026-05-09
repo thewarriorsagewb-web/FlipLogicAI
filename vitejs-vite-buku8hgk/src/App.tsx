@@ -1029,6 +1029,7 @@ function usePhotos(dealId: string | null) {
   const uploadPhotos = useCallback(
     async (files: FileList | File[]) => {
       const arr = Array.from(files);
+      console.log("[usePhotos uploadPhotos] start", { fileCount: arr.length, dealId });
       if (!dealId) {
         const msg = "No deal selected.";
         setError(msg);
@@ -1042,6 +1043,7 @@ function usePhotos(dealId: string | null) {
         if (authErr) throw authErr;
         const user = userData.user;
         if (!user) throw new Error("You must be signed in to upload photos.");
+        console.log("[usePhotos uploadPhotos] after auth", { userId: user.id });
 
         const { data: maxRow, error: maxErr } = await supabase
           .from("deal_photos")
@@ -1066,11 +1068,13 @@ function usePhotos(dealId: string | null) {
             const storagePath = `${user.id}/${dealId}/${photoUuid}.${ext}`;
             const contentType = compressed.contentType;
 
+            console.log("[usePhotos uploadPhotos] before storage.upload", { storagePath, contentType, bytes: compressed.blob.size });
             const { error: upErr } = await supabase.storage.from("deal-photos").upload(storagePath, compressed.blob, {
               contentType,
               cacheControl: "3600",
               upsert: false,
             });
+            console.log("[usePhotos uploadPhotos] after storage.upload", { storagePath, error: upErr?.message ?? null });
             if (upErr) throw upErr;
 
             const { error: insErr } = await supabase.from("deal_photos").insert({
@@ -1702,14 +1706,15 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                   accept="image/*"
                   style={{ display: "none" }}
                   onChange={(e) => {
-                    const fl = e.target.files;
+                    // Snapshot files before clearing the input — input.files is a live FileList and
+                    // clearing value empties it, which previously caused silent no-op uploads.
+                    const arr = e.target.files?.length ? Array.from(e.target.files) : [];
                     if (fileRef.current) fileRef.current.value = "";
-                    if (!fl?.length) return;
+                    if (arr.length === 0) return;
                     if (persistedPhotos.length >= MAX_PERSISTED_PHOTOS) {
                       setPhotoUploadLimitNote("Photo limit reached. Delete photos to add more.");
                       return;
                     }
-                    const arr = Array.from(fl);
                     const room = MAX_PERSISTED_PHOTOS - persistedPhotos.length;
                     if (arr.length > room) {
                       const toUpload = arr.slice(0, room);
