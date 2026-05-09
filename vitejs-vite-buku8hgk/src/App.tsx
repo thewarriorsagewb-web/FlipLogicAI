@@ -75,6 +75,20 @@ interface WalkthroughPhoto {
   analyzed: boolean;
 }
 
+interface PersistedDealPhoto {
+  id: string;
+  dealId: string;
+  userId: string;
+  storagePath: string;
+  fileName: string;
+  fileSizeBytes: number;
+  mimeType: string;
+  flaggedForAi: boolean;
+  displayOrder: number;
+  createdAt: string;
+  signedUrl?: string;
+}
+
 interface Deal {
   id: string; createdAt: string; updatedAt: string;
   inputs: DealInputs; comps: Comp[]; subjectSqft: number;
@@ -821,6 +835,363 @@ function ScenarioRow({ scenario, inputs, isMobile = false }: { scenario: Scenari
   );
 }
 
+const DEAL_PHOTOS_MAX_BYTES = 400 * 1024;
+const DEAL_PHOTOS_MAX_WIDTH = 1920;
+const DEAL_PHOTOS_JPEG_QUALITY = 0.82;
+
+function mimeToDealPhotoExtension(mime: string, fileName: string): string {
+  const m = mime.toLowerCase();
+  if (m === "image/jpeg" || m === "image/jpg") return "jpg";
+  if (m === "image/png") return "png";
+  if (m === "image/webp") return "webp";
+  if (m === "image/heic" || m === "image/heif") return "jpg";
+  const match = /\.([a-z0-9]+)$/i.exec(fileName);
+  if (match) {
+    const ext = match[1].toLowerCase();
+    return ext === "jpeg" ? "jpg" : ext;
+  }
+  return "jpg";
+}
+
+async function loadImageForCompression(file: File): Promise<ImageBitmap | HTMLImageElement | null> {
+  try {
+    return await createImageBitmap(file);
+  } catch {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Image decode failed"));
+        img.src = url;
+      });
+      return img;
+    } catch {
+      return null;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+}
+
+function getImageWidthHeight(img: ImageBitmap | HTMLImageElement): { w: number; h: number } {
+  if (img instanceof ImageBitmap) return { w: img.width, h: img.height };
+  return { w: img.naturalWidth, h: img.naturalHeight };
+}
+
+/**
+ * Client-side compression for deal-photos uploads.
+ * Target ~400 KB JPEG at quality 0.82, max width 1920 (preserve aspect ratio).
+ * Skips re-encoding when width ≤ 1920 and file size ≤ 400 KB (upload original blob).
+ */
+async function compressImageForDealPhoto(file: File): Promise<{ blob: Blob; contentType: string } | null> {
+  const looksHeic =
+    file.type === "image/heic" ||
+    file.type === "image/heif" ||
+    /\.hei[cf]$/i.test(file.name);
+
+  const img = await loadImageForCompression(file);
+  if (!img) {
+    if (looksHeic) console.warn("HEIC/HEIF could not be decoded in this browser — skipping:", file.name);
+    else console.warn("Could not decode image for upload (unsupported format or corrupt file):", file.name);
+    return null;
+  }
+
+  try {
+    const { w, h } = getImageWidthHeight(img);
+    const underDim = w <= DEAL_PHOTOS_MAX_WIDTH && h > 0;
+    const underSize = file.size <= DEAL_PHOTOS_MAX_BYTES;
+
+    if (underDim && underSize) {
+      if (img instanceof ImageBitmap) img.close();
+      return { blob: file, contentType: file.type || "application/octet-stream" };
+    }
+
+    let targetW = w;
+    let targetH = h;
+    if (w > DEAL_PHOTOS_MAX_WIDTH) {
+      targetW = DEAL_PHOTOS_MAX_WIDTH;
+      targetH = Math.max(1, Math.round(h * (DEAL_PHOTOS_MAX_WIDTH / w)));
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      if (img instanceof ImageBitmap) img.close();
+      console.error("Canvas 2D context unavailable");
+      return null;
+    }
+    ctx.drawImage(img, 0, 0, targetW, targetH);
+    if (img instanceof ImageBitmap) img.close();
+
+    let quality = DEAL_PHOTOS_JPEG_QUALITY;
+    let blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    while (blob && blob.size > DEAL_PHOTOS_MAX_BYTES && quality > 0.45) {
+      quality -= 0.05;
+      blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    }
+    if (!blob) {
+      console.error("JPEG encode failed for", file.name);
+      return null;
+    }
+    return { blob, contentType: "image/jpeg" };
+  } catch (e) {
+    console.warn(looksHeic ? "HEIC/HEIF decode failed — skipping file:" : "Image compression failed:", file.name, e);
+    return null;
+  }
+}
+
+function usePhotos(dealId: string | null) {
+  const [photos, setPhotos] = useState<PersistedDealPhoto[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!dealId) {
+      setPhotos([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const { data: rows, error: qErr } = await supabase
+        .from("deal_photos")
+        .select("id, deal_id, user_id, storage_path, file_name, file_size_bytes, mime_type, flagged_for_ai, display_order, created_at")
+        .eq("deal_id", dealId)
+        .order("display_order", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (qErr) throw qErr;
+      const list: PersistedDealPhoto[] = [];
+      for (const row of rows ?? []) {
+        const r = row as Record<string, unknown>;
+        const storagePath = String(r.storage_path ?? "");
+        let signedUrl: string | undefined;
+        try {
+          const { data: signed, error: signErr } = await supabase.storage.from("deal-photos").createSignedUrl(storagePath, 3600);
+          if (signErr) throw signErr;
+          signedUrl = signed?.signedUrl;
+        } catch (signE) {
+          console.error("Signed URL failed for", storagePath, signE);
+        }
+        list.push({
+          id: String(r.id ?? ""),
+          dealId: String(r.deal_id ?? ""),
+          userId: String(r.user_id ?? ""),
+          storagePath,
+          fileName: String(r.file_name ?? ""),
+          fileSizeBytes: Number(r.file_size_bytes ?? 0),
+          mimeType: String(r.mime_type ?? ""),
+          flaggedForAi: Boolean(r.flagged_for_ai),
+          displayOrder: Number(r.display_order ?? 0),
+          createdAt: String(r.created_at ?? ""),
+          signedUrl,
+        });
+      }
+      setPhotos(list);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Could not load deal photos.";
+      console.error(e);
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [dealId]);
+
+  useEffect(() => {
+    if (!dealId) {
+      setPhotos([]);
+      return;
+    }
+    void refresh();
+  }, [dealId, refresh]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    const channel = supabase
+      .channel(`deal_photos:${dealId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "deal_photos", filter: `deal_id=eq.${dealId}` },
+        () => {
+          void refresh();
+        },
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") console.error("Realtime subscription error for deal_photos", dealId);
+      });
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [dealId, refresh]);
+
+  const uploadPhotos = useCallback(
+    async (files: FileList | File[]) => {
+      const arr = Array.from(files);
+      if (!dealId) {
+        const msg = "No deal selected.";
+        setError(msg);
+        console.error(msg);
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const { data: userData, error: authErr } = await supabase.auth.getUser();
+        if (authErr) throw authErr;
+        const user = userData.user;
+        if (!user) throw new Error("You must be signed in to upload photos.");
+
+        const { data: maxRow, error: maxErr } = await supabase
+          .from("deal_photos")
+          .select("display_order")
+          .eq("deal_id", dealId)
+          .order("display_order", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (maxErr) throw maxErr;
+        let nextDisplayOrder = (typeof maxRow?.display_order === "number" ? maxRow.display_order : -1) + 1;
+
+        for (const file of arr) {
+          try {
+            const compressed = await compressImageForDealPhoto(file);
+            if (!compressed) continue;
+
+            const photoUuid = crypto.randomUUID();
+            const ext =
+              compressed.contentType === "image/jpeg"
+                ? "jpg"
+                : mimeToDealPhotoExtension(compressed.contentType || file.type, file.name);
+            const storagePath = `${user.id}/${dealId}/${photoUuid}.${ext}`;
+            const contentType = compressed.contentType;
+
+            const { error: upErr } = await supabase.storage.from("deal-photos").upload(storagePath, compressed.blob, {
+              contentType,
+              cacheControl: "3600",
+              upsert: false,
+            });
+            if (upErr) throw upErr;
+
+            const { error: insErr } = await supabase.from("deal_photos").insert({
+              id: photoUuid,
+              deal_id: dealId,
+              user_id: user.id,
+              storage_path: storagePath,
+              file_name: file.name,
+              file_size_bytes: compressed.blob.size,
+              mime_type: contentType,
+              flagged_for_ai: false,
+              display_order: nextDisplayOrder,
+            });
+
+            if (insErr) {
+              console.error(insErr);
+              try {
+                await supabase.storage.from("deal-photos").remove([storagePath]);
+              } catch (rmErr) {
+                console.error("Rollback storage delete failed:", rmErr);
+              }
+              throw insErr;
+            }
+            nextDisplayOrder += 1;
+          } catch (fileErr: unknown) {
+            const msg = fileErr instanceof Error ? fileErr.message : "Upload failed.";
+            console.error(fileErr);
+            setError(msg);
+          }
+        }
+
+        await refresh();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Upload failed.";
+        console.error(e);
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [dealId, refresh],
+  );
+
+  const deletePhoto = useCallback(
+    async (photoId: string) => {
+      if (!dealId) {
+        const msg = "No deal selected.";
+        setError(msg);
+        console.error(msg);
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const { data: row, error: fetchErr } = await supabase
+          .from("deal_photos")
+          .select("storage_path")
+          .eq("id", photoId)
+          .eq("deal_id", dealId)
+          .maybeSingle();
+        if (fetchErr) throw fetchErr;
+        const storagePath = row?.storage_path as string | undefined;
+        if (!storagePath) throw new Error("Photo not found.");
+
+        const { error: stErr } = await supabase.storage.from("deal-photos").remove([storagePath]);
+        if (stErr) throw stErr;
+
+        const { error: delErr } = await supabase.from("deal_photos").delete().eq("id", photoId).eq("deal_id", dealId);
+        if (delErr) throw delErr;
+
+        await refresh();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Could not delete photo.";
+        console.error(e);
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [dealId, refresh],
+  );
+
+  const toggleFlag = useCallback(
+    async (photoId: string) => {
+      if (!dealId) {
+        const msg = "No deal selected.";
+        setError(msg);
+        console.error(msg);
+        return;
+      }
+      const current = photos.find((p) => p.id === photoId);
+      if (!current) {
+        const msg = "Photo not found.";
+        setError(msg);
+        console.error(msg);
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const { error: upErr } = await supabase
+          .from("deal_photos")
+          .update({ flagged_for_ai: !current.flaggedForAi })
+          .eq("id", photoId)
+          .eq("deal_id", dealId);
+        if (upErr) throw upErr;
+        await refresh();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Could not update photo.";
+        console.error(e);
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [dealId, photos, refresh],
+  );
+
+  return { photos, loading, error, uploadPhotos, deletePhoto, toggleFlag, refresh };
+}
+
 // ─── AI WALKTHROUGH TAB ───────────────────────────────────────────────────────
 function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile = false, dealId, userId, currentDeal, canUseAI, triggerAIUse, onNeedPaywall,
   propertyChangeBanner, onPropertyChangeFromAnalysis, onAcceptPropertyChangeBanner, onDismissPropertyChangeBanner, onModifyPropertySpecsManually }: {
@@ -854,6 +1225,23 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   const [yearGateError, setYearGateError] = useState("");
   const yearGateResolveRef = useRef<((r: { buildYear: number }) => void) | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const {
+    photos: persistedPhotos,
+    loading: photosLoading,
+    error: photosError,
+    uploadPhotos,
+    deletePhoto,
+    refresh: refreshPhotos,
+  } = usePhotos(dealId ?? null);
+
+  const MAX_PERSISTED_PHOTOS = 200;
+  const [photoUploadLimitNote, setPhotoUploadLimitNote] = useState<string | null>(null);
+  const [photosErrorDismissed, setPhotosErrorDismissed] = useState(false);
+
+  useEffect(() => {
+    setPhotosErrorDismissed(false);
+  }, [photosError]);
 
   useEffect(() => {
     const yb = currentDeal.yearBuilt;
@@ -1228,23 +1616,147 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
             {currentDeal.yearBuilt != null && currentDeal.yearBuilt > 0 && currentDeal.yearBuilt < 1978 && <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 6, padding: "10px 14px", fontSize: isMobile ? 12 : 11, color: "#f59e0b", lineHeight: 1.45 }}>⚠ Pre-1978 build — AI will flag lead paint risk automatically</div>}
           </div>
 
-          {walkMode === "photos" && (
+          {walkMode === "photos" && photosLoading && persistedPhotos.length === 0 ? (
+            <div style={{ textAlign: "center", padding: isMobile ? "40px 16px" : "48px 16px", color: "#94a3b8", marginBottom: 16, fontSize: isMobile ? 15 : 14 }}>Loading photos...</div>
+          ) : walkMode === "photos" ? (
             <>
-              <div onClick={() => fileRef.current?.click()} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handlePhotos(e.dataTransfer.files); }}
-                style={{ border: "2px dashed #1e293b", borderRadius: 8, padding: isMobile ? "28px 16px" : "32px 20px", textAlign: "center", cursor: "pointer", marginBottom: 16, background: "#0a0f1a", minHeight: isMobile ? 120 : undefined }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#3b82f6")} onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#1e293b")}>
+              {photosError && !photosErrorDismissed && (
+                <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 12, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <span>Photo error: {photosError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPhotosErrorDismissed(true)}
+                    style={{ background: "transparent", border: "1px solid #64748b", borderRadius: 6, color: "#94a3b8", padding: "4px 10px", fontSize: 11, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
+              <div style={{ fontSize: isMobile ? 13 : 12, color: "#94a3b8", marginBottom: photoUploadLimitNote ? 6 : 10 }}>
+                {persistedPhotos.length} of {MAX_PERSISTED_PHOTOS} photos
+                {persistedPhotos.length >= MAX_PERSISTED_PHOTOS && (
+                  <span style={{ display: "block", marginTop: 4, color: "#f59e0b", fontSize: isMobile ? 12 : 11 }}>Photo limit reached. Delete photos to add more.</span>
+                )}
+              </div>
+              {photoUploadLimitNote && (
+                <div style={{ fontSize: isMobile ? 12 : 11, color: "#f59e0b", marginBottom: 10, lineHeight: 1.45 }}>{photoUploadLimitNote}</div>
+              )}
+
+              <div
+                onClick={() => {
+                  if (photosLoading || persistedPhotos.length >= MAX_PERSISTED_PHOTOS) return;
+                  fileRef.current?.click();
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (photosLoading) return;
+                  const files = e.dataTransfer.files;
+                  if (!files?.length) return;
+                  if (persistedPhotos.length >= MAX_PERSISTED_PHOTOS) {
+                    setPhotoUploadLimitNote("Photo limit reached. Delete photos to add more.");
+                    return;
+                  }
+                  const arr = Array.from(files);
+                  const room = MAX_PERSISTED_PHOTOS - persistedPhotos.length;
+                  if (arr.length > room) {
+                    const toUpload = arr.slice(0, room);
+                    setPhotoUploadLimitNote(`Only ${toUpload.length} of ${arr.length} photos uploaded — 200 photo limit reached.`);
+                    void uploadPhotos(toUpload);
+                  } else {
+                    setPhotoUploadLimitNote(null);
+                    void uploadPhotos(arr);
+                  }
+                }}
+                style={{
+                  border: "2px dashed #1e293b",
+                  borderRadius: 8,
+                  padding: isMobile ? "28px 16px" : "32px 20px",
+                  textAlign: "center",
+                  cursor: photosLoading || persistedPhotos.length >= MAX_PERSISTED_PHOTOS ? "not-allowed" : "pointer",
+                  marginBottom: 16,
+                  background: "#0a0f1a",
+                  minHeight: isMobile ? 120 : undefined,
+                  opacity: photosLoading ? 0.6 : 1,
+                  pointerEvents: photosLoading ? "none" : "auto",
+                }}
+                onMouseEnter={(e) => {
+                  if (!photosLoading && persistedPhotos.length < MAX_PERSISTED_PHOTOS) e.currentTarget.style.borderColor = "#3b82f6";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "#1e293b";
+                }}
+              >
                 <div style={{ fontSize: 32, marginBottom: 10 }}>📸</div>
-                <div style={{ fontSize: isMobile ? 15 : 14, color: "#94a3b8", marginBottom: 4 }}>Drop property photos here or click to upload</div>
-                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569" }}>Up to 8 photos · JPG, PNG, WEBP</div>
-                <input ref={fileRef} type="file" multiple accept="image/*" style={{ display: "none" }} onChange={(e) => e.target.files && handlePhotos(e.target.files)} />
+                <div style={{ fontSize: isMobile ? 15 : 14, color: "#94a3b8", marginBottom: 4 }}>
+                  {photosLoading ? "Uploading..." : "Upload photos · JPG, PNG, WEBP, HEIC · Up to 200 photos"}
+                </div>
+                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569" }}>
+                  {photosLoading ? "Please wait" : "Drop photos here or click to upload"}
+                </div>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const fl = e.target.files;
+                    if (fileRef.current) fileRef.current.value = "";
+                    if (!fl?.length) return;
+                    if (persistedPhotos.length >= MAX_PERSISTED_PHOTOS) {
+                      setPhotoUploadLimitNote("Photo limit reached. Delete photos to add more.");
+                      return;
+                    }
+                    const arr = Array.from(fl);
+                    const room = MAX_PERSISTED_PHOTOS - persistedPhotos.length;
+                    if (arr.length > room) {
+                      const toUpload = arr.slice(0, room);
+                      setPhotoUploadLimitNote(`Only ${toUpload.length} of ${arr.length} photos uploaded — 200 photo limit reached.`);
+                      void uploadPhotos(toUpload);
+                    } else {
+                      setPhotoUploadLimitNote(null);
+                      void uploadPhotos(arr);
+                    }
+                  }}
+                />
               </div>
 
-              {photos.length > 0 && (
+              {persistedPhotos.length > 0 && (
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
-                  {photos.map((p) => (
-                    <div key={p.id} style={{ position: "relative", borderRadius: 6, overflow: "hidden", aspectRatio: "1", background: "#0a0f1a", border: "1px solid #1e293b" }}>
-                      <img src={`data:${p.mediaType};base64,${p.base64}`} alt={p.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      <button onClick={() => setPhotos((prev) => prev.filter((x) => x.id !== p.id))} style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.7)", border: "none", color: "#f87171", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 12 }}>×</button>
+                  {persistedPhotos.map((photo) => (
+                    <div key={photo.id} title={photo.fileName} style={{ position: "relative", borderRadius: 6, overflow: "hidden", background: "#0a0f1a", border: "1px solid #1e293b", display: "flex", flexDirection: "column" }}>
+                      <div style={{ position: "relative", width: "100%", aspectRatio: "1", background: "#1e293b" }}>
+                        {photo.signedUrl ? (
+                          <img src={photo.signedUrl} alt={photo.fileName} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                        ) : (
+                          <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: 12 }}>Loading...</div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            void deletePhoto(photo.id);
+                          }}
+                          style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.7)", border: "none", color: "#f87171", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 12 }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: "#64748b",
+                          padding: "4px 6px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {photo.fileName}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1256,7 +1768,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                 {analyzing ? "🔍 Analyzing..." : `🤖 Analyze ${photos.length > 0 ? photos.length + " Photo" + (photos.length > 1 ? "s" : "") : "Photos"} with AI`}
               </button>
             </>
-          )}
+          ) : null}
 
           {walkMode !== "photos" && (
             <div style={{ marginBottom: 16 }}>
@@ -1424,7 +1936,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                   background: selectedFindings.size === 0 || analyzing || mediaAnalyzing ? "#1e293b" : "linear-gradient(135deg, #16a34a, #15803d)", opacity: selectedFindings.size === 0 || analyzing || mediaAnalyzing ? 0.5 : 1 }}>
                 + Add {selectedFindings.size} Item{selectedFindings.size !== 1 ? "s" : ""} to Scope of Work
               </button>
-              <button type="button" onClick={() => { setFindings([]); if (walkMode === "photos") setPhotos([]); setStatus(""); setSelectedFindings(new Set()); }}
+              <button type="button" onClick={() => { setFindings([]); setStatus(""); setSelectedFindings(new Set()); }}
                 style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#475569", padding: isMobile ? "14px 16px" : "10px 0", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 14 : 12, cursor: "pointer" }}>
                 Clear & Start New Analysis
               </button>
