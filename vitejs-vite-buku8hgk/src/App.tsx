@@ -1212,6 +1212,42 @@ function usePhotos(dealId: string | null) {
     [dealId, refresh],
   );
 
+  const bulkDeletePhotos = useCallback(
+    async (photoIds: string[]) => {
+      if (!dealId || photoIds.length === 0) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const uniq = [...new Set(photoIds)].filter(Boolean);
+        await Promise.all(
+          uniq.map(async (photoId) => {
+            const { data: row, error: fetchErr } = await supabase
+              .from("deal_photos")
+              .select("storage_path")
+              .eq("id", photoId)
+              .eq("deal_id", dealId)
+              .maybeSingle();
+            if (fetchErr) throw fetchErr;
+            const storagePath = row?.storage_path as string | undefined;
+            if (!storagePath) throw new Error("Photo not found.");
+            const { error: stErr } = await supabase.storage.from("deal-photos").remove([storagePath]);
+            if (stErr) throw stErr;
+            const { error: delErr } = await supabase.from("deal_photos").delete().eq("id", photoId).eq("deal_id", dealId);
+            if (delErr) throw delErr;
+          }),
+        );
+        await refresh();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Could not delete photos.";
+        console.error(e);
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [dealId, refresh],
+  );
+
   const toggleFlag = useCallback(async (photoId: string) => {
     const effectiveDealId = dealIdRef.current;
     if (!effectiveDealId) {
@@ -1279,7 +1315,7 @@ function usePhotos(dealId: string | null) {
     }
   }, [markRealtimeSkipForToggle]);
 
-  return { photos, loading, error, uploadPhotos, deletePhoto, toggleFlag, refresh };
+  return { photos, loading, error, uploadPhotos, deletePhoto, bulkDeletePhotos, toggleFlag, refresh };
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -1342,7 +1378,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
     loading: photosLoading,
     error: photosError,
     uploadPhotos,
-    deletePhoto,
+    bulkDeletePhotos,
     toggleFlag,
     refresh: refreshPhotos,
   } = usePhotos(dealId ?? null);
@@ -1351,16 +1387,8 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   const FLAGGED_FOR_AI_LIMIT = 20;
   const flaggedCount = persistedPhotos.filter((p) => p.flaggedForAi).length;
   const photoTabAccent = "#3b82f6";
+  const analyzeOverAiCap = flaggedCount > FLAGGED_FOR_AI_LIMIT;
   const [photoUploadLimitNote, setPhotoUploadLimitNote] = useState<string | null>(null);
-  const [flagLimitNote, setFlagLimitNote] = useState<string | null>(null);
-  const flagLimitNoteTimeoutRef = useRef<number | null>(null);
-
-  useEffect(() => () => {
-    if (flagLimitNoteTimeoutRef.current !== null) {
-      window.clearTimeout(flagLimitNoteTimeoutRef.current);
-      flagLimitNoteTimeoutRef.current = null;
-    }
-  }, []);
   const [photosErrorDismissed, setPhotosErrorDismissed] = useState(false);
 
   useEffect(() => {
@@ -1493,6 +1521,10 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
       setError("Select at least one photo for AI analysis (use the circle in the top-left of each photo)");
       return;
     }
+    if (flaggedPhotos.length > FLAGGED_FOR_AI_LIMIT) {
+      setError(`Select at most ${FLAGGED_FOR_AI_LIMIT} photos for AI analysis — deselect extras or use bulk delete to remove them.`);
+      return;
+    }
     if (!dealId) {
       setError("No deal selected.");
       return;
@@ -1614,7 +1646,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
 
   const howItWorksPhotos: { icon: string; text: string }[] = [
     { icon: "1️⃣", text: "Photos are analyzed securely via FlipLogic AI — no API key required" },
-    { icon: "2️⃣", text: "Drag and drop or tap to upload — up to 200 photos stored per deal; up to 20 selected for AI analysis" },
+    { icon: "2️⃣", text: "Select photos for analysis (up to 20) using the circle in the top-left. Click Analyze with AI or Delete below." },
     { icon: "3️⃣", text: "Set the property build year above — pre-1978 homes automatically trigger lead paint warnings" },
     { icon: "4️⃣", text: "Tap Analyze Photos — AI identifies every repair item visible in your photos and estimates costs" },
   ];
@@ -1796,15 +1828,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
 
               <div style={{ fontSize: isMobile ? 13 : 12, color: "#94a3b8", marginBottom: photoUploadLimitNote ? 6 : 10 }}>
                 <div>{persistedPhotos.length} of {MAX_PERSISTED_PHOTOS} photos</div>
-                <div
-                  style={{
-                    marginTop: 4,
-                    color: flaggedCount === FLAGGED_FOR_AI_LIMIT ? photoTabAccent : "#94a3b8",
-                    fontWeight: flaggedCount === FLAGGED_FOR_AI_LIMIT ? 600 : 400,
-                  }}
-                >
-                  {flaggedCount} of {FLAGGED_FOR_AI_LIMIT} selected for AI
-                </div>
+                <div style={{ marginTop: 4 }}>{flaggedCount} selected</div>
                 {persistedPhotos.length >= MAX_PERSISTED_PHOTOS && (
                   <span style={{ display: "block", marginTop: 4, color: "#f59e0b", fontSize: isMobile ? 12 : 11 }}>Photo limit reached. Delete photos to add more.</span>
                 )}
@@ -1894,10 +1918,6 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                 />
               </div>
 
-              {flagLimitNote && (
-                <div style={{ fontSize: isMobile ? 12 : 11, color: "#f59e0b", marginBottom: 10, lineHeight: 1.45 }}>{flagLimitNote}</div>
-              )}
-
               {persistedPhotos.length > 0 && (
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
                   {persistedPhotos.map((photo) => (
@@ -1910,27 +1930,11 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                         )}
                         <button
                           type="button"
-                          aria-label={photo.flaggedForAi ? "Unflag from AI analysis" : "Flag for AI analysis"}
+                          aria-label={photo.flaggedForAi ? "Deselect photo" : "Select photo"}
                           aria-pressed={photo.flaggedForAi}
                           disabled={photosLoading}
                           onClick={(ev) => {
                             ev.stopPropagation();
-                            if (photo.flaggedForAi) {
-                              void toggleFlag(photo.id);
-                              return;
-                            }
-                            if (flaggedCount >= FLAGGED_FOR_AI_LIMIT) {
-                              if (flagLimitNoteTimeoutRef.current !== null) {
-                                window.clearTimeout(flagLimitNoteTimeoutRef.current);
-                                flagLimitNoteTimeoutRef.current = null;
-                              }
-                              setFlagLimitNote("Maximum 20 photos selected for AI. Unselect a photo to choose another.");
-                              flagLimitNoteTimeoutRef.current = window.setTimeout(() => {
-                                setFlagLimitNote(null);
-                                flagLimitNoteTimeoutRef.current = null;
-                              }, 4000);
-                              return;
-                            }
                             void toggleFlag(photo.id);
                           }}
                           style={{
@@ -1979,16 +1983,6 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                             </svg>
                           )}
                         </button>
-                        <button
-                          type="button"
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            void deletePhoto(photo.id);
-                          }}
-                          style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,0.7)", border: "none", color: "#f87171", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 12 }}
-                        >
-                          ×
-                        </button>
                       </div>
                       <div
                         style={{
@@ -2008,29 +2002,80 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                 </div>
               )}
 
-              <button
-                type="button"
-                title={!analyzing && flaggedCount === 0 ? "Select photos to analyze using the circle in the top-left of each photo" : undefined}
-                onClick={analyze}
-                disabled={analyzing || flaggedCount === 0}
-                style={{
-                  width: "100%",
-                  border: "none",
-                  borderRadius: 8,
-                  color: "#fff",
-                  padding: isMobile ? "16px 16px" : "14px 0",
-                  minHeight: isMobile ? 48 : undefined,
-                  fontSize: isMobile ? 15 : 14,
-                  fontWeight: 700,
-                  cursor: analyzing || flaggedCount === 0 ? "not-allowed" : "pointer",
-                  fontFamily: "'Syne', sans-serif",
-                  marginBottom: 8,
-                  background: analyzing || flaggedCount === 0 ? "#1e293b" : "linear-gradient(135deg, #7c3aed, #6d28d9)",
-                  opacity: analyzing || flaggedCount === 0 ? 0.5 : 1,
-                }}
-              >
-                {analyzing ? (status || "Working…") : `Analyze ${flaggedCount} ${flaggedCount === 1 ? "Photo" : "Photos"} with AI`}
-              </button>
+              {flaggedCount > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    marginBottom: 16,
+                    padding: "12px 14px",
+                    background: "#0a0f1a",
+                    border: "1px solid #1e293b",
+                    borderRadius: 8,
+                  }}
+                >
+                  <span style={{ fontSize: isMobile ? 13 : 12, color: "#94a3b8", fontWeight: 600 }}>
+                    {flaggedCount} selected
+                  </span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginLeft: isMobile ? 0 : "auto", width: isMobile ? "100%" : "auto", justifyContent: isMobile ? "stretch" : "flex-end", flexDirection: isMobile ? "column" : "row" }}>
+                    <button
+                      type="button"
+                      disabled={photosLoading || analyzing}
+                      onClick={() => {
+                        const n = flaggedCount;
+                        if (!window.confirm(`Delete ${n} photos? This cannot be undone.`)) return;
+                        const ids = persistedPhotos.filter((p) => p.flaggedForAi).map((p) => p.id);
+                        void bulkDeletePhotos(ids);
+                      }}
+                      style={{
+                        border: "1px solid #dc2626",
+                        borderRadius: 8,
+                        background: analyzing || photosLoading ? "#451a1a" : "#7f1d1d",
+                        color: "#fecaca",
+                        padding: "10px 14px",
+                        fontSize: isMobile ? 14 : 13,
+                        fontWeight: 700,
+                        fontFamily: "'Syne', sans-serif",
+                        cursor: analyzing || photosLoading ? "not-allowed" : "pointer",
+                        opacity: analyzing || photosLoading ? 0.55 : 1,
+                        flex: isMobile ? "1 1 auto" : "0 0 auto",
+                      }}
+                    >
+                      Delete {flaggedCount}
+                    </button>
+                    <button
+                      type="button"
+                      title={
+                        analyzeOverAiCap && !analyzing
+                          ? "Reduce selection to 20 or fewer photos to analyze with AI. Delete works on any number."
+                          : undefined
+                      }
+                      onClick={analyze}
+                      disabled={analyzing || photosLoading || analyzeOverAiCap}
+                      style={{
+                        border: "none",
+                        borderRadius: 8,
+                        color: "#fff",
+                        padding: isMobile ? "12px 16px" : "10px 16px",
+                        minHeight: isMobile ? 46 : undefined,
+                        fontSize: isMobile ? 14 : 13,
+                        fontWeight: 700,
+                        cursor: analyzing || photosLoading || analyzeOverAiCap ? "not-allowed" : "pointer",
+                        fontFamily: "'Syne', sans-serif",
+                        flex: isMobile ? "1 1 auto" : "0 0 auto",
+                        background:
+                          analyzing || photosLoading || analyzeOverAiCap ? "#1e293b" : "linear-gradient(135deg, #7c3aed, #6d28d9)",
+                        opacity: analyzing || photosLoading || analyzeOverAiCap ? 0.65 : 1,
+                      }}
+                    >
+                      {analyzing ? (status || "Working…") : analyzeOverAiCap ? "Maximum 20 for AI" : `Analyze ${flaggedCount} ${flaggedCount === 1 ? "Photo" : "Photos"} with AI`}
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           ) : null}
 
