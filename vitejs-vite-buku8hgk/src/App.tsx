@@ -1878,82 +1878,15 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
 
               <div
                 style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  gap: 10,
                   marginBottom: photoUploadLimitNote ? 6 : 10,
                   fontSize: isMobile ? 13 : 12,
                   color: "#94a3b8",
                 }}
               >
-                <div>
-                  <div>{persistedPhotos.length} of {MAX_PERSISTED_PHOTOS} photos</div>
-                  <div style={{ marginTop: 4 }}>{flaggedCount} selected</div>
-                  {persistedPhotos.length >= MAX_PERSISTED_PHOTOS && (
-                    <span style={{ display: "block", marginTop: 4, color: "#f59e0b", fontSize: isMobile ? 12 : 11 }}>Photo limit reached. Delete photos to add more.</span>
-                  )}
-                </div>
-                {persistedPhotos.length > 0 && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0, marginLeft: "auto" }}>
-                    <button
-                      type="button"
-                      disabled={photosLoading || flaggedCount >= persistedPhotos.length}
-                      onClick={() => void bulkSetFlags(true)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        fontSize: "inherit",
-                        fontFamily: "'Syne', sans-serif",
-                        cursor: photosLoading || flaggedCount >= persistedPhotos.length ? "not-allowed" : "pointer",
-                        color: photosLoading || flaggedCount >= persistedPhotos.length ? "#475569" : "#94a3b8",
-                        opacity: photosLoading || flaggedCount >= persistedPhotos.length ? 0.55 : 1,
-                      }}
-                      onMouseEnter={(e) => {
-                        if (photosLoading || flaggedCount >= persistedPhotos.length) return;
-                        e.currentTarget.style.color = "#3b82f6";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (photosLoading || flaggedCount >= persistedPhotos.length) {
-                          e.currentTarget.style.color = "#475569";
-                          return;
-                        }
-                        e.currentTarget.style.color = "#94a3b8";
-                      }}
-                    >
-                      Select All
-                    </button>
-                    <button
-                      type="button"
-                      disabled={photosLoading || flaggedCount === 0}
-                      onClick={() => void bulkSetFlags(false)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        fontSize: "inherit",
-                        fontFamily: "'Syne', sans-serif",
-                        cursor: photosLoading || flaggedCount === 0 ? "not-allowed" : "pointer",
-                        color: photosLoading || flaggedCount === 0 ? "#475569" : "#94a3b8",
-                        opacity: photosLoading || flaggedCount === 0 ? 0.55 : 1,
-                      }}
-                      onMouseEnter={(e) => {
-                        if (photosLoading || flaggedCount === 0) return;
-                        e.currentTarget.style.color = "#3b82f6";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (photosLoading || flaggedCount === 0) {
-                          e.currentTarget.style.color = "#475569";
-                          return;
-                        }
-                        e.currentTarget.style.color = "#94a3b8";
-                      }}
-                    >
-                      Deselect All
-                    </button>
-                  </div>
+                <div>{persistedPhotos.length} of {MAX_PERSISTED_PHOTOS} photos</div>
+                <div style={{ marginTop: 4 }}>{flaggedCount} selected</div>
+                {persistedPhotos.length >= MAX_PERSISTED_PHOTOS && (
+                  <span style={{ display: "block", marginTop: 4, color: "#f59e0b", fontSize: isMobile ? 12 : 11 }}>Photo limit reached. Delete photos to add more.</span>
                 )}
               </div>
               {photoUploadLimitNote && (
@@ -2040,6 +1973,67 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                   }}
                 />
               </div>
+
+              {persistedPhotos.length > 0 && (
+                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 16, marginBottom: 10, fontSize: isMobile ? 13 : 12 }}>
+                  <button
+                    type="button"
+                    disabled={photosLoading || flaggedCount >= persistedPhotos.length}
+                    onClick={() => void bulkSetFlags(true)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      fontSize: "inherit",
+                      fontFamily: "'Syne', sans-serif",
+                      cursor: photosLoading || flaggedCount >= persistedPhotos.length ? "not-allowed" : "pointer",
+                      color: photosLoading || flaggedCount >= persistedPhotos.length ? "#475569" : "#94a3b8",
+                      opacity: photosLoading || flaggedCount >= persistedPhotos.length ? 0.55 : 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (photosLoading || flaggedCount >= persistedPhotos.length) return;
+                      e.currentTarget.style.color = "#3b82f6";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (photosLoading || flaggedCount >= persistedPhotos.length) {
+                        e.currentTarget.style.color = "#475569";
+                        return;
+                      }
+                      e.currentTarget.style.color = "#94a3b8";
+                    }}
+                  >
+                    Select All
+                  </button>
+                  <button
+                    type="button"
+                    disabled={photosLoading || flaggedCount === 0}
+                    onClick={() => void bulkSetFlags(false)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      fontSize: "inherit",
+                      fontFamily: "'Syne', sans-serif",
+                      cursor: photosLoading || flaggedCount === 0 ? "not-allowed" : "pointer",
+                      color: photosLoading || flaggedCount === 0 ? "#475569" : "#94a3b8",
+                      opacity: photosLoading || flaggedCount === 0 ? 0.55 : 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (photosLoading || flaggedCount === 0) return;
+                      e.currentTarget.style.color = "#3b82f6";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (photosLoading || flaggedCount === 0) {
+                        e.currentTarget.style.color = "#475569";
+                        return;
+                      }
+                      e.currentTarget.style.color = "#94a3b8";
+                    }}
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              )}
 
               {persistedPhotos.length > 0 && (
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
