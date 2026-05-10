@@ -831,20 +831,6 @@ const DEAL_PHOTOS_MAX_BYTES = 400 * 1024;
 const DEAL_PHOTOS_MAX_WIDTH = 1920;
 const DEAL_PHOTOS_JPEG_QUALITY = 0.82;
 
-function mimeToDealPhotoExtension(mime: string, fileName: string): string {
-  const m = mime.toLowerCase();
-  if (m === "image/jpeg" || m === "image/jpg") return "jpg";
-  if (m === "image/png") return "png";
-  if (m === "image/webp") return "webp";
-  if (m === "image/heic" || m === "image/heif") return "jpg";
-  const match = /\.([a-z0-9]+)$/i.exec(fileName);
-  if (match) {
-    const ext = match[1].toLowerCase();
-    return ext === "jpeg" ? "jpg" : ext;
-  }
-  return "jpg";
-}
-
 async function loadImageForCompression(file: File): Promise<ImageBitmap | HTMLImageElement | null> {
   try {
     return await createImageBitmap(file);
@@ -874,8 +860,72 @@ function getImageWidthHeight(img: ImageBitmap | HTMLImageElement): { w: number; 
 /**
  * Client-side compression for deal-photos uploads.
  * Target ~400 KB JPEG at quality 0.82, max width 1920 (preserve aspect ratio).
- * Skips re-encoding when width ≤ 1920 and file size ≤ 400 KB (upload original blob).
+ * All non-JPEG sources are decoded and re-encoded as JPEG before upload so Storage + Edge see image/jpeg consistently.
  */
+function isProbablyJpegFile(file: File): boolean {
+  const t = file.type?.toLowerCase() ?? "";
+  return t === "image/jpeg" || t === "image/jpg" || /\.jpe?g$/i.test(file.name);
+}
+
+async function decodeImageBlobToPixels(blob: Blob): Promise<ImageBitmap | HTMLImageElement | null> {
+  try {
+    return await createImageBitmap(blob);
+  } catch {
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Image decode failed"));
+        img.src = url;
+      });
+      return img;
+    } catch {
+      return null;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+}
+
+/** Draw decoded bitmap to canvas → JPEG (~400 KB cap), max width 1920. Closes img if ImageBitmap. */
+async function jpegEncodeDecodedImage(
+  img: ImageBitmap | HTMLImageElement,
+  maxSourceW: number,
+  maxSourceH: number,
+): Promise<{ blob: Blob; contentType: string } | null> {
+  let targetW = maxSourceW;
+  let targetH = maxSourceH;
+  if (targetW > DEAL_PHOTOS_MAX_WIDTH && targetW > 0) {
+    targetW = DEAL_PHOTOS_MAX_WIDTH;
+    targetH = Math.max(1, Math.round(maxSourceH * (DEAL_PHOTOS_MAX_WIDTH / maxSourceW)));
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    if (img instanceof ImageBitmap) img.close();
+    console.error("Canvas 2D context unavailable");
+    return null;
+  }
+  ctx.drawImage(img, 0, 0, targetW, targetH);
+  if (img instanceof ImageBitmap) img.close();
+
+  let quality = DEAL_PHOTOS_JPEG_QUALITY;
+  let blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+  while (blob && blob.size > DEAL_PHOTOS_MAX_BYTES && quality > 0.45) {
+    quality -= 0.05;
+    blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+  }
+  if (!blob) {
+    console.error("JPEG encode failed");
+    return null;
+  }
+  return { blob, contentType: "image/jpeg" };
+}
+
 async function compressImageForDealPhoto(file: File): Promise<{ blob: Blob; contentType: string } | null> {
   const looksHeic =
     file.type === "image/heic" ||
@@ -884,7 +934,7 @@ async function compressImageForDealPhoto(file: File): Promise<{ blob: Blob; cont
 
   const img = await loadImageForCompression(file);
   if (!img) {
-    if (looksHeic) console.warn("HEIC/HEIF could not be decoded in this browser — skipping:", file.name);
+    if (looksHeic) console.warn("HEIC/HEIF could not be decoded in this browser:", file.name);
     else console.warn("Could not decode image for upload (unsupported format or corrupt file):", file.name);
     return null;
   }
@@ -894,43 +944,15 @@ async function compressImageForDealPhoto(file: File): Promise<{ blob: Blob; cont
     const underDim = w <= DEAL_PHOTOS_MAX_WIDTH && h > 0;
     const underSize = file.size <= DEAL_PHOTOS_MAX_BYTES;
 
-    if (underDim && underSize) {
+    if (underDim && underSize && isProbablyJpegFile(file)) {
       if (img instanceof ImageBitmap) img.close();
-      return { blob: file, contentType: file.type || "application/octet-stream" };
+      return { blob: file, contentType: "image/jpeg" };
     }
 
-    let targetW = w;
-    let targetH = h;
-    if (w > DEAL_PHOTOS_MAX_WIDTH) {
-      targetW = DEAL_PHOTOS_MAX_WIDTH;
-      targetH = Math.max(1, Math.round(h * (DEAL_PHOTOS_MAX_WIDTH / w)));
-    }
-
-    const canvas = document.createElement("canvas");
-    canvas.width = targetW;
-    canvas.height = targetH;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      if (img instanceof ImageBitmap) img.close();
-      console.error("Canvas 2D context unavailable");
-      return null;
-    }
-    ctx.drawImage(img, 0, 0, targetW, targetH);
-    if (img instanceof ImageBitmap) img.close();
-
-    let quality = DEAL_PHOTOS_JPEG_QUALITY;
-    let blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-    while (blob && blob.size > DEAL_PHOTOS_MAX_BYTES && quality > 0.45) {
-      quality -= 0.05;
-      blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-    }
-    if (!blob) {
-      console.error("JPEG encode failed for", file.name);
-      return null;
-    }
-    return { blob, contentType: "image/jpeg" };
+    return await jpegEncodeDecodedImage(img, w, h);
   } catch (e) {
     console.warn(looksHeic ? "HEIC/HEIF decode failed — skipping file:" : "Image compression failed:", file.name, e);
+    if (img instanceof ImageBitmap) img.close();
     return null;
   }
 }
@@ -1083,15 +1105,22 @@ function usePhotos(dealId: string | null) {
 
         for (const file of arr) {
           try {
+            const looksHeic =
+              file.type === "image/heic" ||
+              file.type === "image/heif" ||
+              /\.hei[cf]$/i.test(file.name);
             const compressed = await compressImageForDealPhoto(file);
-            if (!compressed) continue;
+            if (!compressed) {
+              setError(
+                looksHeic
+                  ? "Could not process this photo. If it's a HEIC photo from iPhone, try saving it as JPEG first."
+                  : "Could not process this photo. Unsupported format or the file may be corrupted.",
+              );
+              continue;
+            }
 
             const photoUuid = crypto.randomUUID();
-            const ext =
-              compressed.contentType === "image/jpeg"
-                ? "jpg"
-                : mimeToDealPhotoExtension(compressed.contentType || file.type, file.name);
-            const storagePath = `${user.id}/${dealId}/${photoUuid}.${ext}`;
+            const storagePath = `${user.id}/${dealId}/${photoUuid}.jpg`;
             const contentType = compressed.contentType;
 
             console.log("[usePhotos uploadPhotos] before storage.upload", { storagePath, contentType, bytes: compressed.blob.size });
@@ -1264,6 +1293,15 @@ async function blobToBase64(blob: Blob): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+/** Decode any browser-supported image blob and re-save as JPEG (handles legacy PNG/WEBP in Storage). */
+async function jpegBlobFromAnyDownloadedBlob(blob: Blob): Promise<Blob | null> {
+  const img = await decodeImageBlobToPixels(blob);
+  if (!img) return null;
+  const { w, h } = getImageWidthHeight(img);
+  const enc = await jpegEncodeDecodedImage(img, w, h);
+  return enc?.blob ?? null;
 }
 
 // ─── AI WALKTHROUGH TAB ───────────────────────────────────────────────────────
@@ -1480,7 +1518,16 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
           setError(`Failed to download photo: ${photo.fileName}`);
           return;
         }
-        base64Array.push(await blobToBase64(blobData));
+        if (photo.mimeType && !/^image\/jpe?g$/i.test(photo.mimeType)) {
+          console.warn("[analyze photos] DB mime_type is not image/jpeg — re-encoding for Edge Function:", photo.mimeType, photo.fileName);
+        }
+        const jpegBlob = await jpegBlobFromAnyDownloadedBlob(blobData);
+        if (!jpegBlob) {
+          setStatus("");
+          setError(`Could not decode photo for analysis: ${photo.fileName}`);
+          return;
+        }
+        base64Array.push(await blobToBase64(jpegBlob));
       }
 
       const payload = {
