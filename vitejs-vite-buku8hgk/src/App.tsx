@@ -1157,41 +1157,51 @@ function usePhotos(dealId: string | null) {
     [dealId, refresh],
   );
 
-  const toggleFlag = useCallback(
-    async (photoId: string) => {
-      if (!dealId) {
-        const msg = "No deal selected.";
-        setError(msg);
-        console.error(msg);
-        return;
-      }
-      const current = photos.find((p) => p.id === photoId);
-      if (!current) {
-        const msg = "Photo not found.";
-        setError(msg);
-        console.error(msg);
-        return;
-      }
-      setLoading(true);
-      setError(null);
-      try {
-        const { error: upErr } = await supabase
-          .from("deal_photos")
-          .update({ flagged_for_ai: !current.flaggedForAi })
-          .eq("id", photoId)
-          .eq("deal_id", dealId);
-        if (upErr) throw upErr;
-        await refresh();
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Could not update photo.";
-        console.error(e);
-        setError(msg);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [dealId, photos, refresh],
-  );
+  const toggleFlag = useCallback(async (photoId: string) => {
+    if (!dealId) {
+      const msg = "No deal selected.";
+      setError(msg);
+      console.error(msg);
+      return;
+    }
+
+    let prior: PersistedDealPhoto[] | undefined;
+    setPhotos((prev) => {
+      const current = prev.find((p) => p.id === photoId);
+      if (!current) return prev;
+      prior = prev;
+      return prev.map((p) => (p.id === photoId ? { ...p, flaggedForAi: !current.flaggedForAi } : p));
+    });
+
+    if (prior === undefined) {
+      const msg = "Photo not found.";
+      setError(msg);
+      console.error(msg);
+      return;
+    }
+
+    const row = prior.find((p) => p.id === photoId);
+    if (!row) {
+      const msg = "Photo not found.";
+      setError(msg);
+      console.error(msg);
+      return;
+    }
+
+    setError(null);
+    try {
+      const { error: upErr } = await supabase
+        .from("deal_photos")
+        .update({ flagged_for_ai: !row.flaggedForAi })
+        .eq("id", photoId)
+        .eq("deal_id", dealId);
+      if (upErr) throw upErr;
+    } catch (e: unknown) {
+      console.error(e);
+      setPhotos(prior);
+      setError("Could not update flag — please try again");
+    }
+  }, [dealId]);
 
   return { photos, loading, error, uploadPhotos, deletePhoto, toggleFlag, refresh };
 }
