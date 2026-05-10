@@ -947,6 +947,9 @@ function usePhotos(dealId: string | null) {
   const [photos, setPhotos] = useState<PersistedDealPhoto[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Keeps toggleFlag stable ([] deps) without stale dealId when switching deals */
+  const dealIdRef = useRef(dealId);
+  dealIdRef.current = dealId;
 
   const refresh = useCallback(async () => {
     if (!dealId) {
@@ -1158,75 +1161,55 @@ function usePhotos(dealId: string | null) {
   );
 
   const toggleFlag = useCallback(async (photoId: string) => {
-    if (!dealId) {
+    const effectiveDealId = dealIdRef.current;
+    if (!effectiveDealId) {
       const msg = "No deal selected.";
       setError(msg);
       console.error(msg);
       return;
     }
 
-    let prior: PersistedDealPhoto[] | undefined;
+    let priorRow: PersistedDealPhoto | undefined;
+    let newFlaggedValue: boolean | undefined;
+
     setPhotos((prev) => {
-      const current = prev.find((p) => p.id === photoId);
-      if (!current) return prev;
-      prior = prev;
-      return prev.map((p) => (p.id === photoId ? { ...p, flaggedForAi: !current.flaggedForAi } : p));
+      const found = prev.find((p) => p.id === photoId);
+      if (!found) return prev;
+      priorRow = found;
+      newFlaggedValue = !found.flaggedForAi;
+      return prev.map((p) => (p.id === photoId ? { ...p, flaggedForAi: newFlaggedValue! } : p));
     });
 
-    if (prior === undefined) {
-      const msg = "Photo not found.";
-      setError(msg);
-      console.error(msg);
+    await Promise.resolve();
+
+    if (!priorRow || newFlaggedValue === undefined) {
+      setError("Photo not found.");
+      console.error("[usePhotos toggleFlag] photo not found in current list", photoId);
       return;
     }
 
-    const row = prior.find((p) => p.id === photoId);
-    if (!row) {
-      const msg = "Photo not found.";
-      setError(msg);
-      console.error(msg);
-      return;
-    }
+    const originalFlagged = priorRow.flaggedForAi;
 
-    const newFlaggedForAi = !row.flaggedForAi;
-    setError(null);
-    console.log("[usePhotos toggleFlag] sending update", {
-      photoId,
-      dealId,
-      flagged_for_ai: newFlaggedForAi,
-      rowUserId: row.userId,
-    });
     try {
-      const updateResult = await supabase
+      setError(null);
+      const { data, error } = await supabase
         .from("deal_photos")
-        .update({ flagged_for_ai: newFlaggedForAi })
+        .update({ flagged_for_ai: newFlaggedValue })
         .eq("id", photoId)
-        .eq("deal_id", dealId)
-        .select("id, deal_id, user_id, flagged_for_ai");
+        .eq("deal_id", effectiveDealId)
+        .select("id, flagged_for_ai");
 
-      console.log("[usePhotos toggleFlag] update raw response", {
-        data: updateResult.data,
-        error: updateResult.error,
-        status: updateResult.status,
-        statusText: updateResult.statusText,
-      });
-
-      const { data: updatedRows, error: upErr } = updateResult;
-      if (upErr) throw upErr;
-      if (!updatedRows?.length) {
-        console.warn("[usePhotos toggleFlag] zero rows updated — check id/deal_id filters and RLS (UPDATE usually requires auth.uid() = user_id)");
-        throw new Error("FLAG_UPDATE_NO_ROWS");
+      if (error || !data || data.length === 0) {
+        setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, flaggedForAi: originalFlagged } : p)));
+        setError("Could not update flag — please try again.");
+        console.error("[usePhotos toggleFlag] update failed", { error, data });
       }
-    } catch (e: unknown) {
-      console.error("[usePhotos toggleFlag] failed", e);
-      setPhotos(prior);
-      if (e instanceof Error && e.message === "FLAG_UPDATE_NO_ROWS") {
-        setError("Could not save flag — sign in required or no permission on this photo.");
-      } else {
-        setError("Could not update flag — please try again");
-      }
+    } catch (err) {
+      setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, flaggedForAi: originalFlagged } : p)));
+      setError("Could not update flag — please try again.");
+      console.error("[usePhotos toggleFlag] exception", err);
     }
-  }, [dealId]);
+  }, []);
 
   return { photos, loading, error, uploadPhotos, deletePhoto, toggleFlag, refresh };
 }
