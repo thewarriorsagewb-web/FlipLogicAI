@@ -67,14 +67,6 @@ interface LenderInfo {
   investorPhone: string; investorEmail: string; lenderName: string;
 }
 
-interface WalkthroughPhoto {
-  id: string;
-  base64: string;
-  mediaType: string;
-  label: string;
-  analyzed: boolean;
-}
-
 interface PersistedDealPhoto {
   id: string;
   dealId: string;
@@ -1261,6 +1253,19 @@ function usePhotos(dealId: string | null) {
   return { photos, loading, error, uploadPhotos, deletePhoto, toggleFlag, refresh };
 }
 
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const idx = result.indexOf(",");
+      resolve(idx >= 0 ? result.slice(idx + 1) : result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 // ─── AI WALKTHROUGH TAB ───────────────────────────────────────────────────────
 function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile = false, dealId, userId, currentDeal, canUseAI, triggerAIUse, onNeedPaywall,
   propertyChangeBanner, onPropertyChangeFromAnalysis, onAcceptPropertyChangeBanner, onDismissPropertyChangeBanner, onModifyPropertySpecsManually }: {
@@ -1282,7 +1287,6 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   const [syncingJobId, setSyncingJobId] = useState<string | null>(null);
   const [mediaAnalyzing, setMediaAnalyzing] = useState(false);
 
-  const [photos, setPhotos] = useState<WalkthroughPhoto[]>([]);
   const [findings, setFindings] = useState<AIFinding[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
@@ -1443,22 +1447,18 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
     }
   };
 
-  const handlePhotos = async (files: FileList) => {
-    const newPhotos: WalkthroughPhoto[] = [];
-    for (let i = 0; i < Math.min(files.length, 8); i++) {
-      const file = files[i];
-      const base64 = await new Promise<string>((res) => {
-        const reader = new FileReader();
-        reader.onload = () => res((reader.result as string).split(",")[1]);
-        reader.readAsDataURL(file);
-      });
-      newPhotos.push({ id: uid(), base64, mediaType: file.type, label: file.name, analyzed: false });
-    }
-    setPhotos((prev) => [...prev, ...newPhotos].slice(0, 8));
-  };
-
   const analyze = async () => {
-    if (photos.length === 0) { setError("Please upload at least one property photo."); return; }
+    if (walkMode !== "photos") return;
+
+    const flaggedPhotos = persistedPhotos.filter((p) => p.flaggedForAi);
+    if (flaggedPhotos.length === 0) {
+      setError("Select at least one photo for AI analysis (use the circle in the top-left of each photo)");
+      return;
+    }
+    if (!dealId) {
+      setError("No deal selected.");
+      return;
+    }
     if (!canUseAI(currentDeal)) {
       onNeedPaywall("AI Walkthrough requires Investor plan or a free trial analysis");
       return;
@@ -1468,18 +1468,31 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
     setError("");
     setFindings([]);
     setSelectedFindings(new Set());
-    setStatus("Sending photos to Claude AI for analysis...");
     try {
-      const b64 = photos.map((p) => p.base64);
+      setStatus("Downloading photos for analysis...");
+      const base64Array: string[] = [];
+      for (let i = 0; i < flaggedPhotos.length; i++) {
+        const photo = flaggedPhotos[i];
+        setStatus(`Downloading photo ${i + 1} of ${flaggedPhotos.length}...`);
+        const { data: blobData, error: dlErr } = await supabase.storage.from("deal-photos").download(photo.storagePath);
+        if (dlErr || !blobData) {
+          setStatus("");
+          setError(`Failed to download photo: ${photo.fileName}`);
+          return;
+        }
+        base64Array.push(await blobToBase64(blobData));
+      }
+
       const payload = {
         mode: "photos",
         propertyAddress: address,
         buildYear: apiBy,
-        videoFrames: b64,
-        framesBase64: b64,
+        framesBase64: base64Array,
+        videoFrames: base64Array,
         flagTimestamps: [] as number[],
         transcript: "",
       };
+      setStatus("Analyzing photos with AI...");
       const { data, error: fnErr } = await supabase.functions.invoke("analyze-walkthrough", { body: payload });
       if (fnErr) {
         const detail = (fnErr as unknown as { context?: { json?: () => Promise<unknown> } }).context?.json
@@ -1488,15 +1501,34 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
         throw new Error(detail);
       }
       const res = data as AnalyzeWalkthroughResponse;
-      const findings = res.findings;
+      const findingsRows = res.findings;
       const serverError = res.error;
       if (serverError) throw new Error(serverError);
-      if (!findings || !Array.isArray(findings)) throw new Error("Invalid response: " + JSON.stringify(data));
-      setFindings(findings);
-      setSelectedFindings(new Set(findings.map((_, i) => i)));
+      if (!findingsRows || !Array.isArray(findingsRows)) throw new Error("Invalid response: " + JSON.stringify(data));
+      setFindings(findingsRows);
+      setSelectedFindings(new Set(findingsRows.map((_, idx) => idx)));
       onPropertyChangeFromAnalysis(normalizePropertyChanges(res.propertyChanges));
-      setStatus(`Analysis complete — ${findings.length} findings identified.`);
+      setStatus(`Analysis complete — ${findingsRows.length} findings identified.`);
+
       await triggerAIUse(dealId);
+
+      try {
+        const { data: authData, error: authErr } = await supabase.auth.getUser();
+        if (authErr) throw authErr;
+        const user = authData.user;
+        if (!user) throw new Error("Not signed in");
+        const { error: insErr } = await supabase.from("walkthrough_findings").insert({
+          mode: "photos",
+          deal_id: dealId,
+          user_id: user.id,
+          findings: findingsRows,
+          transcript: "",
+          frame_storage_paths: flaggedPhotos.map((p) => p.storagePath),
+        });
+        if (insErr) console.error("[analyze photos] Could not persist walkthrough_findings:", insErr);
+      } catch (persistErr: unknown) {
+        console.error("[analyze photos] Could not persist walkthrough_findings:", persistErr);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Analysis failed.");
     } finally {
@@ -1929,10 +1961,28 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                 </div>
               )}
 
-              <button type="button" onClick={analyze} disabled={analyzing || photos.length === 0}
-                style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 15 : 14, fontWeight: 700, cursor: analyzing || photos.length === 0 ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
-                  background: analyzing || photos.length === 0 ? "#1e293b" : "linear-gradient(135deg, #7c3aed, #6d28d9)", opacity: analyzing || photos.length === 0 ? 0.5 : 1 }}>
-                {analyzing ? "🔍 Analyzing..." : `🤖 Analyze ${photos.length > 0 ? photos.length + " Photo" + (photos.length > 1 ? "s" : "") : "Photos"} with AI`}
+              <button
+                type="button"
+                title={!analyzing && flaggedCount === 0 ? "Select photos to analyze using the circle in the top-left of each photo" : undefined}
+                onClick={analyze}
+                disabled={analyzing || flaggedCount === 0}
+                style={{
+                  width: "100%",
+                  border: "none",
+                  borderRadius: 8,
+                  color: "#fff",
+                  padding: isMobile ? "16px 16px" : "14px 0",
+                  minHeight: isMobile ? 48 : undefined,
+                  fontSize: isMobile ? 15 : 14,
+                  fontWeight: 700,
+                  cursor: analyzing || flaggedCount === 0 ? "not-allowed" : "pointer",
+                  fontFamily: "'Syne', sans-serif",
+                  marginBottom: 8,
+                  background: analyzing || flaggedCount === 0 ? "#1e293b" : "linear-gradient(135deg, #7c3aed, #6d28d9)",
+                  opacity: analyzing || flaggedCount === 0 ? 0.5 : 1,
+                }}
+              >
+                {analyzing ? (status || "Working…") : `Analyze ${flaggedCount} ${flaggedCount === 1 ? "Photo" : "Photos"} with AI`}
               </button>
             </>
           ) : null}
