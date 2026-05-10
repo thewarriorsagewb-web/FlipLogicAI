@@ -1236,11 +1236,24 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
     error: photosError,
     uploadPhotos,
     deletePhoto,
+    toggleFlag,
     refresh: refreshPhotos,
   } = usePhotos(dealId ?? null);
 
   const MAX_PERSISTED_PHOTOS = 200;
+  const FLAGGED_FOR_AI_LIMIT = 20;
+  const flaggedCount = persistedPhotos.filter((p) => p.flaggedForAi).length;
+  const photoTabAccent = "#3b82f6";
   const [photoUploadLimitNote, setPhotoUploadLimitNote] = useState<string | null>(null);
+  const [flagLimitNote, setFlagLimitNote] = useState<string | null>(null);
+  const flagLimitNoteTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (flagLimitNoteTimeoutRef.current !== null) {
+      window.clearTimeout(flagLimitNoteTimeoutRef.current);
+      flagLimitNoteTimeoutRef.current = null;
+    }
+  }, []);
   const [photosErrorDismissed, setPhotosErrorDismissed] = useState(false);
 
   useEffect(() => {
@@ -1457,7 +1470,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
 
   const howItWorksPhotos: { icon: string; text: string }[] = [
     { icon: "1️⃣", text: "Photos are analyzed securely via FlipLogic AI — no API key required" },
-    { icon: "2️⃣", text: "Upload up to 8 photos of the property — drag and drop or tap to select" },
+    { icon: "2️⃣", text: "Drag and drop or tap to upload — up to 200 photos stored per deal; up to 20 selected for AI analysis" },
     { icon: "3️⃣", text: "Set the property build year above — pre-1978 homes automatically trigger lead paint warnings" },
     { icon: "4️⃣", text: "Tap Analyze Photos — AI identifies every repair item visible in your photos and estimates costs" },
   ];
@@ -1638,7 +1651,16 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
               )}
 
               <div style={{ fontSize: isMobile ? 13 : 12, color: "#94a3b8", marginBottom: photoUploadLimitNote ? 6 : 10 }}>
-                {persistedPhotos.length} of {MAX_PERSISTED_PHOTOS} photos
+                <div>{persistedPhotos.length} of {MAX_PERSISTED_PHOTOS} photos</div>
+                <div
+                  style={{
+                    marginTop: 4,
+                    color: flaggedCount === FLAGGED_FOR_AI_LIMIT ? photoTabAccent : "#94a3b8",
+                    fontWeight: flaggedCount === FLAGGED_FOR_AI_LIMIT ? 600 : 400,
+                  }}
+                >
+                  {flaggedCount} of {FLAGGED_FOR_AI_LIMIT} selected for AI
+                </div>
                 {persistedPhotos.length >= MAX_PERSISTED_PHOTOS && (
                   <span style={{ display: "block", marginTop: 4, color: "#f59e0b", fontSize: isMobile ? 12 : 11 }}>Photo limit reached. Delete photos to add more.</span>
                 )}
@@ -1728,6 +1750,10 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                 />
               </div>
 
+              {flagLimitNote && (
+                <div style={{ fontSize: isMobile ? 12 : 11, color: "#f59e0b", marginBottom: 10, lineHeight: 1.45 }}>{flagLimitNote}</div>
+              )}
+
               {persistedPhotos.length > 0 && (
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
                   {persistedPhotos.map((photo) => (
@@ -1738,6 +1764,77 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                         ) : (
                           <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: 12 }}>Loading...</div>
                         )}
+                        <button
+                          type="button"
+                          aria-label={photo.flaggedForAi ? "Unflag from AI analysis" : "Flag for AI analysis"}
+                          aria-pressed={photo.flaggedForAi}
+                          disabled={photosLoading}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            if (photo.flaggedForAi) {
+                              void toggleFlag(photo.id);
+                              return;
+                            }
+                            if (flaggedCount >= FLAGGED_FOR_AI_LIMIT) {
+                              if (flagLimitNoteTimeoutRef.current !== null) {
+                                window.clearTimeout(flagLimitNoteTimeoutRef.current);
+                                flagLimitNoteTimeoutRef.current = null;
+                              }
+                              setFlagLimitNote("Maximum 20 photos selected for AI. Unselect a photo to choose another.");
+                              flagLimitNoteTimeoutRef.current = window.setTimeout(() => {
+                                setFlagLimitNote(null);
+                                flagLimitNoteTimeoutRef.current = null;
+                              }, 4000);
+                              return;
+                            }
+                            void toggleFlag(photo.id);
+                          }}
+                          style={{
+                            position: "absolute",
+                            top: 4,
+                            left: 4,
+                            width: 28,
+                            height: 28,
+                            padding: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderRadius: "50%",
+                            border: photo.flaggedForAi ? `2px solid ${photoTabAccent}` : "2px solid rgba(226, 232, 240, 0.65)",
+                            background: photo.flaggedForAi ? photoTabAccent : "rgba(15, 23, 42, 0.75)",
+                            color: "#e2e8f0",
+                            cursor: photosLoading ? "not-allowed" : "pointer",
+                            opacity: photosLoading ? 0.45 : 1,
+                            transition: "transform 0.15s ease, filter 0.15s ease",
+                            boxShadow: "0 1px 4px rgba(0,0,0,0.45)",
+                          }}
+                          onMouseEnter={(ev) => {
+                            if (photosLoading) return;
+                            ev.currentTarget.style.transform = "scale(1.08)";
+                            ev.currentTarget.style.filter = "brightness(1.12)";
+                          }}
+                          onMouseLeave={(ev) => {
+                            ev.currentTarget.style.transform = "scale(1)";
+                            ev.currentTarget.style.filter = "none";
+                          }}
+                        >
+                          {photo.flaggedForAi ? (
+                            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden style={{ display: "block" }}>
+                              <path
+                                fill="none"
+                                stroke="#fff"
+                                strokeWidth="2.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M3.5 8.2 6.4 11l6.1-6.1"
+                              />
+                            </svg>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden style={{ display: "block" }}>
+                              <circle cx="8" cy="8" r="5.25" fill="none" stroke="currentColor" strokeWidth="1.75" />
+                            </svg>
+                          )}
+                        </button>
                         <button
                           type="button"
                           onClick={(ev) => {
