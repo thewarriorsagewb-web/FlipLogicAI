@@ -1188,18 +1188,43 @@ function usePhotos(dealId: string | null) {
       return;
     }
 
+    const newFlaggedForAi = !row.flaggedForAi;
     setError(null);
+    console.log("[usePhotos toggleFlag] sending update", {
+      photoId,
+      dealId,
+      flagged_for_ai: newFlaggedForAi,
+      rowUserId: row.userId,
+    });
     try {
-      const { error: upErr } = await supabase
+      const updateResult = await supabase
         .from("deal_photos")
-        .update({ flagged_for_ai: !row.flaggedForAi })
+        .update({ flagged_for_ai: newFlaggedForAi })
         .eq("id", photoId)
-        .eq("deal_id", dealId);
+        .eq("deal_id", dealId)
+        .select("id, deal_id, user_id, flagged_for_ai");
+
+      console.log("[usePhotos toggleFlag] update raw response", {
+        data: updateResult.data,
+        error: updateResult.error,
+        status: updateResult.status,
+        statusText: updateResult.statusText,
+      });
+
+      const { data: updatedRows, error: upErr } = updateResult;
       if (upErr) throw upErr;
+      if (!updatedRows?.length) {
+        console.warn("[usePhotos toggleFlag] zero rows updated — check id/deal_id filters and RLS (UPDATE usually requires auth.uid() = user_id)");
+        throw new Error("FLAG_UPDATE_NO_ROWS");
+      }
     } catch (e: unknown) {
-      console.error(e);
+      console.error("[usePhotos toggleFlag] failed", e);
       setPhotos(prior);
-      setError("Could not update flag — please try again");
+      if (e instanceof Error && e.message === "FLAG_UPDATE_NO_ROWS") {
+        setError("Could not save flag — sign in required or no permission on this photo.");
+      } else {
+        setError("Could not update flag — please try again");
+      }
     }
   }, [dealId]);
 
