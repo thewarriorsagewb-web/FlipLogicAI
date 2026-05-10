@@ -950,14 +950,32 @@ function usePhotos(dealId: string | null) {
   /** Keeps toggleFlag stable ([] deps) without stale dealId when switching deals */
   const dealIdRef = useRef(dealId);
   dealIdRef.current = dealId;
+  /** Ignore realtime UPDATE refreshes briefly after local optimistic toggle (avoids overwriting UI + avoids refresh storms). */
+  const realtimeSkipPhotoIdsRef = useRef(new Set<string>());
+  const realtimeSkipTimersRef = useRef(new Map<string, number>());
 
-  const refresh = useCallback(async () => {
+  const markRealtimeSkipForToggle = useCallback((photoId: string) => {
+    const timers = realtimeSkipTimersRef.current;
+    const prev = timers.get(photoId);
+    if (prev !== undefined) window.clearTimeout(prev);
+    realtimeSkipPhotoIdsRef.current.add(photoId);
+    timers.set(
+      photoId,
+      window.setTimeout(() => {
+        realtimeSkipPhotoIdsRef.current.delete(photoId);
+        timers.delete(photoId);
+      }, 2000),
+    );
+  }, []);
+
+  const refresh = useCallback(async (options?: { background?: boolean }) => {
     if (!dealId) {
       setPhotos([]);
       return;
     }
-    setLoading(true);
-    setError(null);
+    const background = Boolean(options?.background);
+    if (!background) setLoading(true);
+    if (!background) setError(null);
     try {
       const { data: rows, error: qErr } = await supabase
         .from("deal_photos")
@@ -996,9 +1014,9 @@ function usePhotos(dealId: string | null) {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Could not load deal photos.";
       console.error(e);
-      setError(msg);
+      if (!background) setError(msg);
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, [dealId]);
 
@@ -1011,14 +1029,27 @@ function usePhotos(dealId: string | null) {
   }, [dealId, refresh]);
 
   useEffect(() => {
+    realtimeSkipPhotoIdsRef.current.clear();
+    realtimeSkipTimersRef.current.forEach((t) => window.clearTimeout(t));
+    realtimeSkipTimersRef.current.clear();
+  }, [dealId]);
+
+  useEffect(() => {
     if (!dealId) return;
     const channel = supabase
       .channel(`deal_photos:${dealId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "deal_photos", filter: `deal_id=eq.${dealId}` },
-        () => {
-          void refresh();
+        (payload: { eventType: string; new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
+          if (payload.eventType === "UPDATE") {
+            const rawId = payload.new?.id ?? payload.old?.id;
+            if (rawId != null && realtimeSkipPhotoIdsRef.current.has(String(rawId))) {
+              console.log("[usePhotos realtime] skip refresh (pending local flag toggle)", String(rawId));
+              return;
+            }
+          }
+          void refresh({ background: true });
         },
       )
       .subscribe((status) => {
@@ -1172,6 +1203,8 @@ function usePhotos(dealId: string | null) {
     let priorRow: PersistedDealPhoto | undefined;
     let newFlaggedValue: boolean | undefined;
 
+    console.time("toggleFlag-visual");
+    markRealtimeSkipForToggle(photoId);
     setPhotos((prev) => {
       const found = prev.find((p) => p.id === photoId);
       if (!found) return prev;
@@ -1179,10 +1212,15 @@ function usePhotos(dealId: string | null) {
       newFlaggedValue = !found.flaggedForAi;
       return prev.map((p) => (p.id === photoId ? { ...p, flaggedForAi: newFlaggedValue! } : p));
     });
+    console.timeEnd("toggleFlag-visual");
 
     await Promise.resolve();
 
     if (!priorRow || newFlaggedValue === undefined) {
+      const tSkip = realtimeSkipTimersRef.current.get(photoId);
+      if (tSkip !== undefined) window.clearTimeout(tSkip);
+      realtimeSkipTimersRef.current.delete(photoId);
+      realtimeSkipPhotoIdsRef.current.delete(photoId);
       setError("Photo not found.");
       console.error("[usePhotos toggleFlag] photo not found in current list", photoId);
       return;
@@ -1192,24 +1230,33 @@ function usePhotos(dealId: string | null) {
 
     try {
       setError(null);
-      const { data, error } = await supabase
-        .from("deal_photos")
-        .update({ flagged_for_ai: newFlaggedValue })
-        .eq("id", photoId)
-        .eq("deal_id", effectiveDealId)
-        .select("id, flagged_for_ai");
+      let data: { id: unknown; flagged_for_ai: unknown }[] | null;
+      let supaErr;
+      console.time("toggleFlag-db");
+      try {
+        const res = await supabase
+          .from("deal_photos")
+          .update({ flagged_for_ai: newFlaggedValue })
+          .eq("id", photoId)
+          .eq("deal_id", effectiveDealId)
+          .select("id, flagged_for_ai");
+        data = res.data as typeof data;
+        supaErr = res.error;
+      } finally {
+        console.timeEnd("toggleFlag-db");
+      }
 
-      if (error || !data || data.length === 0) {
+      if (supaErr || !data || data.length === 0) {
         setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, flaggedForAi: originalFlagged } : p)));
         setError("Could not update flag — please try again.");
-        console.error("[usePhotos toggleFlag] update failed", { error, data });
+        console.error("[usePhotos toggleFlag] update failed", { error: supaErr, data });
       }
     } catch (err) {
       setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, flaggedForAi: originalFlagged } : p)));
       setError("Could not update flag — please try again.");
       console.error("[usePhotos toggleFlag] exception", err);
     }
-  }, []);
+  }, [markRealtimeSkipForToggle]);
 
   return { photos, loading, error, uploadPhotos, deletePhoto, toggleFlag, refresh };
 }
