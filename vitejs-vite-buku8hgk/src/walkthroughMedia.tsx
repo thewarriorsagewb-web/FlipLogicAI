@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, type CSSProperties } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AIFinding, WalkthroughFlag, PendingWalkthroughJob, VideoBurstMeta, PropertyChanges, AnalyzeWalkthroughResponse } from "./walkthroughTypes";
 import { normalizePropertyChanges } from "./walkthroughTypes";
-import { decodeBase64ToUint8Array, uploadWalkthroughFrames } from "./walkthroughStorage";
+import { jpegBase64FromVideoBurstMeta, uploadWalkthroughFrames } from "./walkthroughStorage";
 
 export const WALKTHROUGH_PENDING_KEY = "fliplogic_walkthrough_pending";
 export const WALKTHROUGH_TRIGGER_KEY = "fliplogic_walkthrough_trigger_phrase";
@@ -50,59 +50,6 @@ function pickVideoMime(): string {
   if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")) return "video/webm;codecs=vp8,opus";
   if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")) return "video/webm;codecs=vp9,opus";
   return "video/webm";
-}
-
-/** One JPEG thumbnail per burst WebM, in burst capture order (audiovideo). */
-async function jpegBase64FromVideoBurstMeta(meta: VideoBurstMeta): Promise<string | null> {
-  try {
-    const raw = decodeBase64ToUint8Array(meta.base64);
-    const vblob = new Blob([Uint8Array.from(raw)], { type: meta.mimeType || pickVideoMime() });
-    const url = URL.createObjectURL(vblob);
-    try {
-      const video = document.createElement("video");
-      video.muted = true;
-      video.playsInline = true;
-      video.src = url;
-      await new Promise<void>((resolve, reject) => {
-        const to = window.setTimeout(() => reject(new Error("burst video load timeout")), 20000);
-        video.onloadeddata = () => {
-          window.clearTimeout(to);
-          resolve();
-        };
-        video.onerror = () => {
-          window.clearTimeout(to);
-          reject(new Error("burst video load error"));
-        };
-      });
-      const dur = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 1;
-      video.currentTime = Math.min(0.25, dur * 0.05);
-      await new Promise<void>((resolve, reject) => {
-        const to = window.setTimeout(() => reject(new Error("burst seek timeout")), 10000);
-        video.onseeked = () => {
-          window.clearTimeout(to);
-          resolve();
-        };
-      });
-      const vw = video.videoWidth || 640;
-      const vh = video.videoHeight || 480;
-      const w = Math.min(640, vw);
-      const h = Math.min(480, vh);
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return null;
-      ctx.drawImage(video, 0, 0, w, h);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
-      const comma = dataUrl.indexOf(",");
-      return comma >= 0 ? dataUrl.slice(comma + 1) : null;
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  } catch (e: unknown) {
-    console.error("[walkthroughMedia] burst thumbnail extract failed:", e);
-    return null;
-  }
 }
 
 function formatRecTime(totalSec: number) {

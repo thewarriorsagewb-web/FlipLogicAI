@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { AIFinding, WalkthroughCaptureMode, WalkthroughModeDataEntry, PendingWalkthroughJob, PropertyChanges, AnalyzeWalkthroughResponse } from "./walkthroughTypes";
+import type { AIFinding, WalkthroughCaptureMode, WalkthroughModeDataEntry, PendingWalkthroughJob, PropertyChanges, AnalyzeWalkthroughResponse, VideoBurstMeta } from "./walkthroughTypes";
 import { normalizePropertyChanges } from "./walkthroughTypes";
 import { WalkthroughMediaRecorder, WALKTHROUGH_TRIGGER_KEY, isMobileDevice, loadPendingJobs, savePendingJobs, type AIGateDeal } from "./walkthroughMedia";
+import { jpegBase64FromVideoBurstMeta, uploadWalkthroughFrames } from "./walkthroughStorage";
 import { useSubscription } from "./useSubscription";
 import { PaywallModal } from "./PaywallModal";
 // ─── Supabase Client ──────────────────────────────────────────────────────────
@@ -1421,6 +1422,32 @@ function parseWalkthroughFindingsCol(raw: unknown): AIFinding[] {
   return raw as AIFinding[];
 }
 
+function isVideoBurstMeta(v: unknown): v is VideoBurstMeta {
+  if (v == null || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.base64 === "string" && typeof o.mimeType === "string" && typeof o.atSec === "number";
+}
+
+function parsePayloadFramesBase64(payload: Record<string, unknown>): string[] {
+  const raw = payload.framesBase64;
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const x of raw) {
+    if (typeof x === "string" && x.length > 0) out.push(x);
+  }
+  return out;
+}
+
+function parsePayloadVideoBursts(payload: Record<string, unknown>): VideoBurstMeta[] {
+  const raw = payload.videoBursts;
+  if (!Array.isArray(raw)) return [];
+  const out: VideoBurstMeta[] = [];
+  for (const x of raw) {
+    if (isVideoBurstMeta(x)) out.push(x);
+  }
+  return out;
+}
+
 function formatWalkthroughSavedFramesCaption(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -1662,25 +1689,104 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
       const parsed = res.findings;
       if (!parsed || !Array.isArray(parsed)) throw new Error("Invalid response from analyze-walkthrough");
       const jobMode = job.mode;
-      const tr =
-        typeof job.payload === "object" && job.payload != null && "transcript" in job.payload && typeof (job.payload as { transcript?: unknown }).transcript === "string"
-          ? (job.payload as { transcript: string }).transcript
-          : "";
+      const payload =
+        typeof job.payload === "object" && job.payload != null && !Array.isArray(job.payload)
+          ? (job.payload as Record<string, unknown>)
+          : ({} as Record<string, unknown>);
+      const tr = typeof payload.transcript === "string" ? payload.transcript : "";
+
+      const persistErrors: string[] = [];
+      const jpegFrames: string[] = [];
+      if (jobMode === "video") {
+        for (const f of parsePayloadFramesBase64(payload)) {
+          if (f.length > 0) jpegFrames.push(f);
+        }
+      } else if (jobMode === "audiovideo") {
+        for (const b of parsePayloadVideoBursts(payload)) {
+          const j = await jpegBase64FromVideoBurstMeta(b);
+          if (j) jpegFrames.push(j);
+        }
+      }
+
+      let newStoragePaths: string[] = [];
+      if (jpegFrames.length > 0) {
+        try {
+          newStoragePaths = await uploadWalkthroughFrames(supabase, jpegFrames, dealId, userId);
+        } catch (uploadErr: unknown) {
+          console.error("[syncPendingJob] frame upload failed:", uploadErr);
+          persistErrors.push("Analysis complete, but frames could not be saved.");
+        }
+      }
+
+      const { data: existingRow, error: selErr } = await supabase
+        .from("walkthrough_findings")
+        .select("frame_storage_paths")
+        .eq("deal_id", dealId)
+        .eq("user_id", userId)
+        .eq("mode", jobMode)
+        .maybeSingle();
+      if (selErr) {
+        console.error("[syncPendingJob] walkthrough_findings select failed:", selErr);
+        persistErrors.push(
+          "Analysis complete, but existing saved frames could not be read. New frames may not have been merged with prior sessions.",
+        );
+      }
+      const existingPaths = !selErr && existingRow ? parseWalkthroughFramePathsCol(existingRow.frame_storage_paths) : [];
+      const mergedPaths = [...existingPaths, ...newStoragePaths];
+
+      const { data: upsertRow, error: upsertErr } = await supabase
+        .from("walkthrough_findings")
+        .upsert(
+          {
+            deal_id: dealId,
+            user_id: userId,
+            mode: jobMode,
+            findings: parsed,
+            transcript: tr,
+            frame_storage_paths: mergedPaths.length > 0 ? mergedPaths : null,
+          },
+          { onConflict: "deal_id,user_id,mode" },
+        )
+        .select("updated_at, created_at")
+        .maybeSingle();
+      if (upsertErr) {
+        console.error("[syncPendingJob] walkthrough_findings upsert failed:", upsertErr);
+        persistErrors.push(
+          "Analysis complete, but results could not be saved. Try syncing again, or refresh the page.",
+        );
+      }
+
+      if (persistErrors.length > 0) {
+        setError(persistErrors.join("\n\n"));
+      }
+
+      const row = upsertRow as Record<string, unknown> | null | undefined;
+      const uAt = row?.updated_at;
+      const cAt = row?.created_at;
+      const persistedTimestamp =
+        !upsertErr && typeof uAt === "string" && uAt.length > 0
+          ? uAt
+          : !upsertErr && typeof cAt === "string" && cAt.length > 0
+            ? cAt
+            : new Date().toISOString();
+
       setModeData((prev) => ({
         ...prev,
         [jobMode]: {
           findings: parsed,
           transcript: tr,
-          frame_storage_paths: prev[jobMode]?.frame_storage_paths ?? [],
-          timestamp: new Date().toISOString(),
+          frame_storage_paths: mergedPaths,
+          timestamp: persistedTimestamp,
         },
       }));
       setSelectedByMode((pb) => ({ ...pb, [jobMode]: new Set(parsed.map((_, i) => i)) }));
       onPropertyChangeFromAnalysis(normalizePropertyChanges(res.propertyChanges));
       setStatus(`Synced — ${parsed.length} findings identified.`);
-      const next = loadPendingJobs().filter((j) => j.id !== job.id);
-      savePendingJobs(next);
-      setPendingJobs(next);
+      if (!upsertErr) {
+        const next = loadPendingJobs().filter((j) => j.id !== job.id);
+        savePendingJobs(next);
+        setPendingJobs(next);
+      }
       await triggerAIUse(dealId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Sync failed.");
