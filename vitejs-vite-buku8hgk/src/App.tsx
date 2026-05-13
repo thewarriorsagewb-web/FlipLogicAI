@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { AIFinding, WalkthroughCaptureMode, PendingWalkthroughJob, PropertyChanges, AnalyzeWalkthroughResponse } from "./walkthroughTypes";
+import type { AIFinding, WalkthroughCaptureMode, WalkthroughModeDataEntry, PendingWalkthroughJob, PropertyChanges, AnalyzeWalkthroughResponse } from "./walkthroughTypes";
 import { normalizePropertyChanges } from "./walkthroughTypes";
 import { WalkthroughMediaRecorder, WALKTHROUGH_TRIGGER_KEY, isMobileDevice, loadPendingJobs, savePendingJobs, type AIGateDeal } from "./walkthroughMedia";
 import { useSubscription } from "./useSubscription";
@@ -1394,6 +1394,33 @@ async function jpegBlobFromAnyDownloadedBlob(blob: Blob): Promise<Blob | null> {
 const IS_VITE_DEV =
   typeof import.meta !== "undefined" && (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true;
 
+function emptyWalkthroughModeData(): Record<WalkthroughCaptureMode, WalkthroughModeDataEntry | null> {
+  return { photos: null, audio: null, video: null, audiovideo: null };
+}
+
+function emptyWalkthroughSelections(): Record<WalkthroughCaptureMode, Set<number>> {
+  return { photos: new Set(), audio: new Set(), video: new Set(), audiovideo: new Set() };
+}
+
+function parseWalkthroughFramePathsCol(raw: unknown): string[] {
+  const out: string[] = [];
+  if (!Array.isArray(raw)) return out;
+  for (const p of raw) {
+    if (typeof p === "string" && p.trim().length > 0) out.push(p.trim());
+  }
+  return out;
+}
+
+function parseWalkthroughRowModeCol(raw: unknown): WalkthroughCaptureMode | null {
+  if (raw === "photos" || raw === "audio" || raw === "video" || raw === "audiovideo") return raw;
+  return null;
+}
+
+function parseWalkthroughFindingsCol(raw: unknown): AIFinding[] {
+  if (!Array.isArray(raw)) return [];
+  return raw as AIFinding[];
+}
+
 function formatWalkthroughSavedFramesCaption(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -1428,13 +1455,13 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   const [syncingJobId, setSyncingJobId] = useState<string | null>(null);
   const [mediaAnalyzing, setMediaAnalyzing] = useState(false);
 
-  const [findings, setFindings] = useState<AIFinding[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-  const [selectedFindings, setSelectedFindings] = useState<Set<number>>(new Set());
+
+  const [modeData, setModeData] = useState<Record<WalkthroughCaptureMode, WalkthroughModeDataEntry | null>>(() => emptyWalkthroughModeData());
+  const [selectedByMode, setSelectedByMode] = useState<Record<WalkthroughCaptureMode, Set<number>>>(() => emptyWalkthroughSelections());
   const [savedFrameUrls, setSavedFrameUrls] = useState<Array<{ path: string; signedUrl: string }>>([]);
-  const [savedFrameTimestamp, setSavedFrameTimestamp] = useState<string | null>(null);
   const [frameLightboxUrl, setFrameLightboxUrl] = useState<string | null>(null);
   const [localBuildYear, setLocalBuildYear] = useState("");
   const [showYearGate, setShowYearGate] = useState(false);
@@ -1442,6 +1469,11 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   const [yearGateError, setYearGateError] = useState("");
   const yearGateResolveRef = useRef<((r: { buildYear: number }) => void) | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const activeWalkthroughEntry = modeData[walkMode];
+  const findings = activeWalkthroughEntry?.findings ?? [];
+  const savedFrameTimestamp = activeWalkthroughEntry?.timestamp ?? null;
+  const selectedFindings = selectedByMode[walkMode];
 
   const {
     photos: persistedPhotos,
@@ -1515,47 +1547,64 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   }, []);
 
   useEffect(() => {
-    if (!dealId) return;
+    if (!dealId || !userId) return;
     let cancelled = false;
     void (async () => {
-      setSavedFrameUrls([]);
-      setSavedFrameTimestamp(null);
-      const { data, error } = await supabase
+      setModeData(emptyWalkthroughModeData());
+      setSelectedByMode(emptyWalkthroughSelections());
+      const { data: rows, error } = await supabase
         .from("walkthrough_findings")
-        .select("findings, transcript, frame_storage_paths, created_at")
+        .select("mode, findings, transcript, frame_storage_paths, created_at, updated_at")
         .eq("deal_id", dealId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false });
       if (cancelled) return;
       if (error) {
-        const code = (error as { code?: string }).code;
-        if (code === "PGRST116") return;
+        console.error("[AIWalkthroughTab] walkthrough_findings load failed:", error);
         return;
       }
-      const loaded = data?.findings;
-      if (Array.isArray(loaded) && loaded.length > 0) {
-        setFindings(loaded as AIFinding[]);
-        setSelectedFindings(new Set(loaded.map((_: unknown, i: number) => i)));
+      const next = emptyWalkthroughModeData();
+      const sel = emptyWalkthroughSelections();
+      for (const raw of rows ?? []) {
+        const r = raw as Record<string, unknown>;
+        const m = parseWalkthroughRowModeCol(r.mode);
+        if (!m) continue;
+        const f = parseWalkthroughFindingsCol(r.findings);
+        const transcript = typeof r.transcript === "string" ? r.transcript : "";
+        const framePaths = parseWalkthroughFramePathsCol(r.frame_storage_paths);
+        const uAt = r.updated_at;
+        const cAt = r.created_at;
+        const timestamp =
+          typeof uAt === "string" && uAt.length > 0 ? uAt : typeof cAt === "string" && cAt.length > 0 ? cAt : new Date().toISOString();
+        next[m] = { findings: f, transcript, frame_storage_paths: framePaths, timestamp };
+        sel[m] = f.length > 0 ? new Set(f.map((_, i) => i)) : new Set();
       }
-
-      const row = data as Record<string, unknown> | null | undefined;
-      const createdAtRaw = row?.created_at;
-      const createdAtStr = typeof createdAtRaw === "string" ? createdAtRaw : null;
-      if (!cancelled) setSavedFrameTimestamp(createdAtStr);
-
-      const rawPaths = row?.frame_storage_paths;
-      const paths: string[] = [];
-      if (Array.isArray(rawPaths)) {
-        for (const p of rawPaths) {
-          if (typeof p === "string" && p.trim().length > 0) paths.push(p.trim());
-        }
+      if (!cancelled) {
+        setModeData(next);
+        setSelectedByMode(sel);
       }
-      if (paths.length === 0 || cancelled) {
-        if (!cancelled) setSavedFrameUrls([]);
-        return;
-      }
+    })();
+    return () => { cancelled = true; };
+  }, [dealId, userId]);
 
+  const framePathsForSigning = useMemo(
+    () => (modeData[walkMode]?.frame_storage_paths ?? []).join("\0"),
+    [modeData, walkMode],
+  );
+
+  useEffect(() => {
+    if (!(walkMode === "video" || walkMode === "audiovideo")) {
+      setSavedFrameUrls([]);
+      return;
+    }
+    const paths = modeData[walkMode]?.frame_storage_paths ?? [];
+    if (paths.length === 0) {
+      setSavedFrameUrls([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
       const { data: signedList, error: batchSignErr } = await supabase.storage.from("deal-photos").createSignedUrls(paths, 3600);
       if (cancelled) return;
       if (batchSignErr || !signedList) {
@@ -1574,7 +1623,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
       if (!cancelled) setSavedFrameUrls(pairs);
     })();
     return () => { cancelled = true; };
-  }, [dealId]);
+  }, [dealId, walkMode, framePathsForSigning]);
 
   useEffect(() => {
     if (!frameLightboxUrl) return;
@@ -1586,8 +1635,6 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   }, [frameLightboxUrl]);
 
   useEffect(() => {
-    setFindings([]);
-    setSelectedFindings(new Set());
     setError("");
     setStatus("");
   }, [walkMode]);
@@ -1614,8 +1661,21 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
       const res = data as AnalyzeWalkthroughResponse;
       const parsed = res.findings;
       if (!parsed || !Array.isArray(parsed)) throw new Error("Invalid response from analyze-walkthrough");
-      setFindings(parsed);
-      setSelectedFindings(new Set(parsed.map((_, i) => i)));
+      const jobMode = job.mode;
+      const tr =
+        typeof job.payload === "object" && job.payload != null && "transcript" in job.payload && typeof (job.payload as { transcript?: unknown }).transcript === "string"
+          ? (job.payload as { transcript: string }).transcript
+          : "";
+      setModeData((prev) => ({
+        ...prev,
+        [jobMode]: {
+          findings: parsed,
+          transcript: tr,
+          frame_storage_paths: prev[jobMode]?.frame_storage_paths ?? [],
+          timestamp: new Date().toISOString(),
+        },
+      }));
+      setSelectedByMode((pb) => ({ ...pb, [jobMode]: new Set(parsed.map((_, i) => i)) }));
       onPropertyChangeFromAnalysis(normalizePropertyChanges(res.propertyChanges));
       setStatus(`Synced — ${parsed.length} findings identified.`);
       const next = loadPendingJobs().filter((j) => j.id !== job.id);
@@ -1652,8 +1712,16 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
     const { buildYear: apiBy } = await waitForYearGate();
     setAnalyzing(true);
     setError("");
-    setFindings([]);
-    setSelectedFindings(new Set());
+    setModeData((prev) => ({
+      ...prev,
+      photos: {
+        findings: [],
+        transcript: "",
+        frame_storage_paths: prev.photos?.frame_storage_paths ?? [],
+        timestamp: prev.photos?.timestamp ?? new Date().toISOString(),
+      },
+    }));
+    setSelectedByMode((pb) => ({ ...pb, photos: new Set() }));
     try {
       setStatus("Downloading photos for analysis...");
       const base64Array: string[] = [];
@@ -1700,8 +1768,16 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
       const serverError = res.error;
       if (serverError) throw new Error(serverError);
       if (!findingsRows || !Array.isArray(findingsRows)) throw new Error("Invalid response: " + JSON.stringify(data));
-      setFindings(findingsRows);
-      setSelectedFindings(new Set(findingsRows.map((_, idx) => idx)));
+      setModeData((prev) => ({
+        ...prev,
+        photos: {
+          findings: findingsRows,
+          transcript: "",
+          frame_storage_paths: prev.photos?.frame_storage_paths ?? [],
+          timestamp: prev.photos?.timestamp ?? new Date().toISOString(),
+        },
+      }));
+      setSelectedByMode((pb) => ({ ...pb, photos: new Set(findingsRows.map((_, idx) => idx)) }));
       onPropertyChangeFromAnalysis(normalizePropertyChanges(res.propertyChanges));
       setStatus(`Analysis complete — ${findingsRows.length} findings identified.`);
 
@@ -1712,15 +1788,53 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
         if (authErr) throw authErr;
         const user = authData.user;
         if (!user) throw new Error("Not signed in");
-        const { error: insErr } = await supabase.from("walkthrough_findings").insert({
-          mode: "photos",
-          deal_id: dealId,
-          user_id: user.id,
-          findings: findingsRows,
-          transcript: "",
-          frame_storage_paths: flaggedPhotos.map((p) => p.storagePath),
-        });
-        if (insErr) console.error("[analyze photos] Could not persist walkthrough_findings:", insErr);
+        const { data: existingPhotoRow, error: selPhotoErr } = await supabase
+          .from("walkthrough_findings")
+          .select("frame_storage_paths")
+          .eq("deal_id", dealId)
+          .eq("user_id", user.id)
+          .eq("mode", "photos")
+          .maybeSingle();
+        if (selPhotoErr) {
+          console.error("[analyze photos] walkthrough_findings select failed:", selPhotoErr);
+        }
+        const existingPhotoPaths = !selPhotoErr && existingPhotoRow ? parseWalkthroughFramePathsCol(existingPhotoRow.frame_storage_paths) : [];
+        const newPhotoPaths = flaggedPhotos.map((p) => p.storagePath);
+        const mergedPhotoPaths = [...existingPhotoPaths, ...newPhotoPaths];
+        const { data: photoUpsertRow, error: upsertPhotoErr } = await supabase
+          .from("walkthrough_findings")
+          .upsert(
+            {
+              mode: "photos",
+              deal_id: dealId,
+              user_id: user.id,
+              findings: findingsRows,
+              transcript: "",
+              frame_storage_paths: mergedPhotoPaths.length > 0 ? mergedPhotoPaths : null,
+            },
+            { onConflict: "deal_id,user_id,mode" },
+          )
+          .select("updated_at, created_at")
+          .maybeSingle();
+        if (upsertPhotoErr) {
+          console.error("[analyze photos] Could not persist walkthrough_findings:", upsertPhotoErr);
+        } else {
+          const row = photoUpsertRow as Record<string, unknown> | null | undefined;
+          const uAt = row?.updated_at;
+          const cAt = row?.created_at;
+          const ts =
+            typeof uAt === "string" && uAt.length > 0 ? uAt : typeof cAt === "string" && cAt.length > 0 ? cAt : new Date().toISOString();
+          setModeData((prev) => ({
+            ...prev,
+            photos: {
+              findings: findingsRows,
+              transcript: "",
+              frame_storage_paths: mergedPhotoPaths,
+              timestamp: ts,
+            },
+          }));
+          setSelectedByMode((pb) => ({ ...pb, photos: new Set(findingsRows.map((_, idx) => idx)) }));
+        }
       } catch (persistErr: unknown) {
         console.error("[analyze photos] Could not persist walkthrough_findings:", persistErr);
       }
@@ -1732,7 +1846,12 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   };
 
   const toggleFinding = (i: number) => {
-    setSelectedFindings((prev) => { const next = new Set(prev); next.has(i) ? next.delete(i) : next.add(i); return next; });
+    setSelectedByMode((prev) => {
+      const cur = new Set(prev[walkMode]);
+      if (cur.has(i)) cur.delete(i);
+      else cur.add(i);
+      return { ...prev, [walkMode]: cur };
+    });
   };
 
   const handleAddToScope = () => {
@@ -2294,10 +2413,25 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                 triggerAIUse={triggerAIUse}
                 onNeedPaywall={onNeedPaywall}
                 onBeforeAnalyze={waitForYearGate}
-                onFindings={(f) => {
-                  setFindings(f);
-                  setSelectedFindings(new Set(f.map((_, i) => i)));
+                onFindings={(f, transcript) => {
+                  setModeData((prev) => ({
+                    ...prev,
+                    [walkMode]: {
+                      findings: f,
+                      transcript,
+                      frame_storage_paths: prev[walkMode]?.frame_storage_paths ?? [],
+                      timestamp: prev[walkMode]?.timestamp ?? new Date().toISOString(),
+                    },
+                  }));
+                  setSelectedByMode((pb) => ({ ...pb, [walkMode]: new Set(f.map((_, i) => i)) }));
                   setStatus(`Analysis complete — ${f.length} findings identified.`);
+                }}
+                onWalkthroughPersisted={({ frame_storage_paths, timestamp }) => {
+                  setModeData((prev) => {
+                    const cur = prev[walkMode];
+                    if (!cur) return prev;
+                    return { ...prev, [walkMode]: { ...cur, frame_storage_paths, timestamp } };
+                  });
                 }}
                 onPropertyChanges={onPropertyChangeFromAnalysis}
                 onAnalyzing={setMediaAnalyzing}
@@ -2369,8 +2503,8 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
               <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 10 : 0, marginBottom: 12 }}>
                 <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}>AI Findings — Select items to add to Scope</div>
                 <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                  <button type="button" onClick={() => setSelectedFindings(new Set(findings.map((_, i) => i)))} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#94a3b8", padding: isMobile ? "10px 14px" : "4px 10px", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 13 : 11, cursor: "pointer" }}>All</button>
-                  <button type="button" onClick={() => setSelectedFindings(new Set())} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#94a3b8", padding: isMobile ? "10px 14px" : "4px 10px", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 13 : 11, cursor: "pointer" }}>None</button>
+                  <button type="button" onClick={() => setSelectedByMode((pb) => ({ ...pb, [walkMode]: new Set(findings.map((_, i) => i)) }))} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#94a3b8", padding: isMobile ? "10px 14px" : "4px 10px", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 13 : 11, cursor: "pointer" }}>All</button>
+                  <button type="button" onClick={() => setSelectedByMode((pb) => ({ ...pb, [walkMode]: new Set() }))} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#94a3b8", padding: isMobile ? "10px 14px" : "4px 10px", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 13 : 11, cursor: "pointer" }}>None</button>
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2466,7 +2600,15 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                   background: selectedFindings.size === 0 || analyzing || mediaAnalyzing ? "#1e293b" : "linear-gradient(135deg, #16a34a, #15803d)", opacity: selectedFindings.size === 0 || analyzing || mediaAnalyzing ? 0.5 : 1 }}>
                 + Add {selectedFindings.size} Item{selectedFindings.size !== 1 ? "s" : ""} to Scope of Work
               </button>
-              <button type="button" onClick={() => { setFindings([]); setStatus(""); setSelectedFindings(new Set()); }}
+              <button type="button" onClick={() => {
+                setModeData((prev) => {
+                  const cur = prev[walkMode];
+                  if (!cur) return prev;
+                  return { ...prev, [walkMode]: { ...cur, findings: [], transcript: "" } };
+                });
+                setStatus("");
+                setSelectedByMode((pb) => ({ ...pb, [walkMode]: new Set() }));
+              }}
                 style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#475569", padding: isMobile ? "14px 16px" : "10px 0", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 14 : 12, cursor: "pointer" }}>
                 Clear & Start New Analysis
               </button>

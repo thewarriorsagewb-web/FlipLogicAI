@@ -50,6 +50,15 @@ export type AnalyzeWalkthroughResponse = {
 
 export type WalkthroughCaptureMode = "photos" | "audio" | "video" | "audiovideo";
 
+/** One persisted walkthrough_findings row per (deal, user, mode) — loaded into AI Walkthrough tab state. */
+export interface WalkthroughModeDataEntry {
+  findings: AIFinding[];
+  transcript: string;
+  frame_storage_paths: string[];
+  /** ISO timestamp from DB (prefer updated_at). */
+  timestamp: string;
+}
+
 export interface WalkthroughFlag {
   atSec: number;
   source: "manual" | "voice";

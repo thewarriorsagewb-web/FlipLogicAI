@@ -118,6 +118,15 @@ function uid() {
   return crypto.randomUUID();
 }
 
+function parseStoredFramePaths(raw: unknown): string[] {
+  const out: string[] = [];
+  if (!Array.isArray(raw)) return out;
+  for (const p of raw) {
+    if (typeof p === "string" && p.trim().length > 0) out.push(p.trim());
+  }
+  return out;
+}
+
 /** Minimal deal shape for AI trial / subscription gating (mirrors App Deal) */
 export type AIGateDeal = { id: string; aiAnalysisUsed?: boolean };
 
@@ -129,6 +138,7 @@ export function WalkthroughMediaRecorder({
   supabase,
   triggerPhrase,
   onFindings,
+  onWalkthroughPersisted,
   onPropertyChanges,
   onAnalyzing,
   dealId,
@@ -145,7 +155,9 @@ export function WalkthroughMediaRecorder({
   isMobile: boolean;
   supabase: SupabaseClient;
   triggerPhrase: string;
-  onFindings: (f: AIFinding[]) => void;
+  onFindings: (f: AIFinding[], transcript: string) => void;
+  /** After walkthrough_findings upsert succeeds (merged frame paths + server timestamp). */
+  onWalkthroughPersisted?: (info: { frame_storage_paths: string[]; timestamp: string }) => void;
   /** Net property spec deltas from walkthrough analysis (scope is separate) */
   onPropertyChanges?: (p: PropertyChanges) => void;
   onAnalyzing: (b: boolean) => void;
@@ -501,7 +513,8 @@ export function WalkthroughMediaRecorder({
       const serverError = res.error;
       if (serverError) throw new Error(serverError);
       if (!findings || !Array.isArray(findings)) throw new Error("Invalid response: " + JSON.stringify(data));
-      onFindings(findings);
+      const transcriptStr = transcriptPieces.join(" ").trim();
+      onFindings(findings, transcriptStr);
       const pc = normalizePropertyChanges(res.propertyChanges);
       onPropertyChanges?.(pc);
 
@@ -534,20 +547,50 @@ export function WalkthroughMediaRecorder({
         frameStoragePaths = null;
       }
 
-      const { error: insErr } = await supabase.from("walkthrough_findings").insert({
-        deal_id: dealId,
-        user_id: userId,
-        mode: mode,
-        findings: findings,
-        transcript: transcriptPieces.join(" ").trim(),
-        created_at: new Date().toISOString(),
-        frame_storage_paths: frameStoragePaths,
-      });
-      if (insErr) {
-        console.error("[runAnalyze] walkthrough_findings insert failed:", insErr);
+      const { data: existingRow, error: selErr } = await supabase
+        .from("walkthrough_findings")
+        .select("frame_storage_paths")
+        .eq("deal_id", dealId)
+        .eq("user_id", userId)
+        .eq("mode", mode)
+        .maybeSingle();
+      if (selErr) {
+        console.error("[runAnalyze] walkthrough_findings select failed:", selErr);
+        persistErrors.push(
+          "Analysis complete, but existing saved frames could not be read. New frames may not have been merged with prior sessions.",
+        );
+      }
+      const existingPaths = !selErr && existingRow ? parseStoredFramePaths(existingRow.frame_storage_paths) : [];
+      const newPaths = frameStoragePaths ?? [];
+      const mergedPaths = [...existingPaths, ...newPaths];
+
+      const { data: upsertRow, error: upsertErr } = await supabase
+        .from("walkthrough_findings")
+        .upsert(
+          {
+            deal_id: dealId,
+            user_id: userId,
+            mode,
+            findings,
+            transcript: transcriptStr,
+            frame_storage_paths: mergedPaths.length > 0 ? mergedPaths : null,
+          },
+          { onConflict: "deal_id,user_id,mode" },
+        )
+        .select("updated_at, created_at")
+        .maybeSingle();
+      if (upsertErr) {
+        console.error("[runAnalyze] walkthrough_findings upsert failed:", upsertErr);
         persistErrors.push(
           "Analysis complete, but results could not be saved. Try analyzing again, or refresh the page.",
         );
+      } else if (onWalkthroughPersisted) {
+        const row = upsertRow as Record<string, unknown> | null | undefined;
+        const uAt = row?.updated_at;
+        const cAt = row?.created_at;
+        const timestamp =
+          typeof uAt === "string" && uAt.length > 0 ? uAt : typeof cAt === "string" && cAt.length > 0 ? cAt : new Date().toISOString();
+        onWalkthroughPersisted({ frame_storage_paths: mergedPaths, timestamp });
       }
       if (persistErrors.length > 0) {
         setAnalyzeError(persistErrors.join("\n\n"));
