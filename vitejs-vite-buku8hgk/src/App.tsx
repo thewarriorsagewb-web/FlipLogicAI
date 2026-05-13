@@ -1390,6 +1390,10 @@ async function jpegBlobFromAnyDownloadedBlob(blob: Blob): Promise<Blob | null> {
 }
 
 // ─── AI WALKTHROUGH TAB ───────────────────────────────────────────────────────
+/** Vite sets `import.meta.env.DEV`; narrow without requiring vite/client in tsconfig. */
+const IS_VITE_DEV =
+  typeof import.meta !== "undefined" && (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true;
+
 function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile = false, dealId, userId, currentDeal, canUseAI, triggerAIUse, onNeedPaywall,
   propertyChangeBanner, onPropertyChangeFromAnalysis, onAcceptPropertyChangeBanner, onDismissPropertyChangeBanner, onModifyPropertySpecsManually }: {
   address: string; onUpdateYearBuilt: (y: number | null) => void; onAddToScope: (items: ScopeItem[]) => void; isMobile?: boolean;
