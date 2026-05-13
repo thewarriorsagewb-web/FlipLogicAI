@@ -1480,6 +1480,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   const [triggerPhrase, setTriggerPhrase] = useState(() => localStorage.getItem(WALKTHROUGH_TRIGGER_KEY) || "flag this");
   const [pendingJobs, setPendingJobs] = useState<PendingWalkthroughJob[]>(() => loadPendingJobs());
   const [syncingJobId, setSyncingJobId] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(() => typeof navigator !== "undefined" && navigator.onLine);
   const [mediaAnalyzing, setMediaAnalyzing] = useState(false);
 
   const [analyzing, setAnalyzing] = useState(false);
@@ -1571,6 +1572,16 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   useEffect(() => {
     const iv = window.setInterval(() => setPendingJobs(loadPendingJobs()), 2000);
     return () => window.clearInterval(iv);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setIsOnline(navigator.onLine);
+    window.addEventListener("online", handler);
+    window.addEventListener("offline", handler);
+    return () => {
+      window.removeEventListener("online", handler);
+      window.removeEventListener("offline", handler);
+    };
   }, []);
 
   useEffect(() => {
@@ -2088,7 +2099,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
               <div style={{ flex: 1, fontSize: 13, color: "#cbd5e1" }}>{job.label}</div>
               <button
                 type="button"
-                disabled={!navigator.onLine || syncingJobId === job.id}
+                disabled={!isOnline || syncingJobId === job.id}
                 onClick={() => void syncPendingJob(job)}
                 style={{
                   minHeight: 60,
@@ -2096,12 +2107,12 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                   border: "none",
                   fontWeight: 700,
                   fontFamily: "'Syne', sans-serif",
-                  cursor: !navigator.onLine || syncingJobId === job.id ? "not-allowed" : "pointer",
+                  cursor: !isOnline || syncingJobId === job.id ? "not-allowed" : "pointer",
                   fontSize: 14,
                   padding: "0 20px",
-                  background: navigator.onLine ? "#1d4ed8" : "#334155",
+                  background: isOnline ? "#1d4ed8" : "#334155",
                   color: "#fff",
-                  opacity: navigator.onLine ? 1 : 0.5,
+                  opacity: isOnline ? 1 : 0.5,
                 }}
               >
                 {syncingJobId === job.id ? "Syncing…" : "Sync"}
@@ -3412,13 +3423,15 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo, isMobi
 }
 
 // ─── Deals Sidebar ────────────────────────────────────────────────────────────
-function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, onOpenHelp, syncing, upgradePanel, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
+function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, onOpenHelp, syncing, hasPendingWalkthroughJobs, upgradePanel, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
   deals: Deal[]; activeDealId: string; onSelect: (id: string) => void; onNew: () => boolean | Promise<boolean>;
-  onOpenSettings: () => void; onOpenHelp: () => void; syncing: boolean;
+  onOpenSettings: () => void; onOpenHelp: () => void; syncing: boolean; hasPendingWalkthroughJobs: boolean;
   upgradePanel?: ReactNode;
   variant?: "sidebar" | "drawer"; drawerOpen?: boolean; onCloseDrawer?: () => void;
 }) {
   const isDrawer = variant === "drawer";
+  const syncFooterColor: string = syncing ? "#f59e0b" : hasPendingWalkthroughJobs ? "#eab308" : "#10b981";
+  const syncFooterText: string = syncing ? "⟳ Saving..." : hasPendingWalkthroughJobs ? "⚠ Pending sync" : "✓ Synced to cloud";
   const shell: CSSProperties = isDrawer
     ? {
         position: "fixed", left: 0, top: 0, height: "100dvh", width: "min(300px, 88vw)", zIndex: 300,
@@ -3516,7 +3529,7 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, on
         })}
       </div>
       <div style={{ padding: "12px 14px", borderTop: "1px solid #1e293b", flexShrink: 0 }}>
-        <div style={{ fontSize: 10, color: syncing ? "#a3a3a3" : "#94a3b8", marginBottom: 8, textAlign: "center" }}>{syncing ? "⟳ Saving..." : "✓ Synced to cloud"}</div>
+        <div style={{ fontSize: 10, color: syncFooterColor, marginBottom: 8, textAlign: "center" }}>{syncFooterText}</div>
       </div>
     </div>
   );
@@ -4070,6 +4083,7 @@ export default function App() {
   const [activeDealId, setActiveDealId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"deal" | "ai" | "comps" | "rental" | "stress" | "scope" | "packet">("deal");
   const [syncing, setSyncing] = useState(false);
+  const [hasPendingWalkthroughJobs, setHasPendingWalkthroughJobs] = useState<boolean>(false);
   const [dbLoading, setDbLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -4111,6 +4125,20 @@ export default function App() {
     }, 50);
     return () => window.clearTimeout(t);
   }, [showSettings, scrollToManageDeals]);
+
+  useEffect(() => {
+    const checkPending = () => {
+      try {
+        const jobs = loadPendingJobs();
+        setHasPendingWalkthroughJobs(jobs.length > 0);
+      } catch {
+        setHasPendingWalkthroughJobs(false);
+      }
+    };
+    checkPending();
+    const iv = window.setInterval(checkPending, 2000);
+    return () => window.clearInterval(iv);
+  }, []);
 
   const canUseAI = useCallback(
     (deal: AIGateDeal) => {
@@ -4745,8 +4773,8 @@ export default function App() {
           }}
         />
       )}
-      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setShowHelp(false); setActiveDealId(id); }} onNew={handleAddDeal} onOpenSettings={() => { setShowHelp(false); setShowSettings(true); }} onOpenHelp={() => { setShowSettings(false); setShowHelp(true); }} syncing={syncing} upgradePanel={sidebarUpgradePanel} variant="sidebar" />}
-      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setShowHelp(false); setActiveDealId(id); }} onNew={handleAddDeal} onOpenSettings={() => { setShowHelp(false); setShowSettings(true); }} onOpenHelp={() => { setShowSettings(false); setShowHelp(true); }} syncing={syncing} upgradePanel={sidebarUpgradePanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
+      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setShowHelp(false); setActiveDealId(id); }} onNew={handleAddDeal} onOpenSettings={() => { setShowHelp(false); setShowSettings(true); }} onOpenHelp={() => { setShowSettings(false); setShowHelp(true); }} syncing={syncing} hasPendingWalkthroughJobs={hasPendingWalkthroughJobs} upgradePanel={sidebarUpgradePanel} variant="sidebar" />}
+      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setShowHelp(false); setActiveDealId(id); }} onNew={handleAddDeal} onOpenSettings={() => { setShowHelp(false); setShowSettings(true); }} onOpenHelp={() => { setShowSettings(false); setShowHelp(true); }} syncing={syncing} hasPendingWalkthroughJobs={hasPendingWalkthroughJobs} upgradePanel={sidebarUpgradePanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", minWidth: 0 }}>
         {/* Header */}
         <div style={{ background: "linear-gradient(135deg, #060b14 0%, #0d1829 100%)", borderBottom: "1px solid #1e293b", padding: isMobile ? "12px 14px" : "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
