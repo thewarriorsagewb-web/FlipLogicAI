@@ -1394,6 +1394,20 @@ async function jpegBlobFromAnyDownloadedBlob(blob: Blob): Promise<Blob | null> {
 const IS_VITE_DEV =
   typeof import.meta !== "undefined" && (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true;
 
+function formatWalkthroughSavedFramesCaption(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile = false, dealId, userId, currentDeal, canUseAI, triggerAIUse, onNeedPaywall,
   propertyChangeBanner, onPropertyChangeFromAnalysis, onAcceptPropertyChangeBanner, onDismissPropertyChangeBanner, onModifyPropertySpecsManually }: {
   address: string; onUpdateYearBuilt: (y: number | null) => void; onAddToScope: (items: ScopeItem[]) => void; isMobile?: boolean;
@@ -1419,6 +1433,9 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [selectedFindings, setSelectedFindings] = useState<Set<number>>(new Set());
+  const [savedFrameUrls, setSavedFrameUrls] = useState<Array<{ path: string; signedUrl: string }>>([]);
+  const [savedFrameTimestamp, setSavedFrameTimestamp] = useState<string | null>(null);
+  const [frameLightboxUrl, setFrameLightboxUrl] = useState<string | null>(null);
   const [localBuildYear, setLocalBuildYear] = useState("");
   const [showYearGate, setShowYearGate] = useState(false);
   const [yearGateInput, setYearGateInput] = useState("");
@@ -1501,9 +1518,11 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
     if (!dealId) return;
     let cancelled = false;
     void (async () => {
+      setSavedFrameUrls([]);
+      setSavedFrameTimestamp(null);
       const { data, error } = await supabase
         .from("walkthrough_findings")
-        .select("findings, transcript")
+        .select("findings, transcript, frame_storage_paths, created_at")
         .eq("deal_id", dealId)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -1519,9 +1538,52 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
         setFindings(loaded as AIFinding[]);
         setSelectedFindings(new Set(loaded.map((_: unknown, i: number) => i)));
       }
+
+      const row = data as Record<string, unknown> | null | undefined;
+      const createdAtRaw = row?.created_at;
+      const createdAtStr = typeof createdAtRaw === "string" ? createdAtRaw : null;
+      if (!cancelled) setSavedFrameTimestamp(createdAtStr);
+
+      const rawPaths = row?.frame_storage_paths;
+      const paths: string[] = [];
+      if (Array.isArray(rawPaths)) {
+        for (const p of rawPaths) {
+          if (typeof p === "string" && p.trim().length > 0) paths.push(p.trim());
+        }
+      }
+      if (paths.length === 0 || cancelled) {
+        if (!cancelled) setSavedFrameUrls([]);
+        return;
+      }
+
+      const { data: signedList, error: batchSignErr } = await supabase.storage.from("deal-photos").createSignedUrls(paths, 3600);
+      if (cancelled) return;
+      if (batchSignErr || !signedList) {
+        if (!cancelled) setSavedFrameUrls([]);
+        return;
+      }
+      const pairs: Array<{ path: string; signedUrl: string }> = [];
+      for (const entry of signedList) {
+        if (entry.error != null) continue;
+        const p = entry.path;
+        const u = entry.signedUrl;
+        if (typeof p === "string" && p.length > 0 && typeof u === "string" && u.length > 0) {
+          pairs.push({ path: p, signedUrl: u });
+        }
+      }
+      if (!cancelled) setSavedFrameUrls(pairs);
     })();
     return () => { cancelled = true; };
   }, [dealId]);
+
+  useEffect(() => {
+    if (!frameLightboxUrl) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setFrameLightboxUrl(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [frameLightboxUrl]);
 
   useEffect(() => {
     setFindings([]);
@@ -1683,6 +1745,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
 
   const hazmatFindings = findings.filter((f) => f.hazmat);
   const totalEstimate = findings.filter((_, i) => selectedFindings.has(i)).reduce((s, f) => s + f.estimatedCost, 0);
+  const savedFramesCaptionText = formatWalkthroughSavedFramesCaption(savedFrameTimestamp);
 
   const showPropertyChangeBanner = Boolean(
     propertyChangeBanner
@@ -2332,6 +2395,43 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
               </div>
             </div>
           )}
+          {(walkMode === "video" || walkMode === "audiovideo") && savedFrameUrls.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: isMobile ? 12 : 11, color: "#94a3b8", fontWeight: 600, marginBottom: 4 }}>Captured frames</div>
+              <div style={{ fontSize: isMobile ? 11 : 10, color: "#64748b", marginBottom: 10 }}>
+                Most recent walkthrough{savedFramesCaptionText ? ` · ${savedFramesCaptionText}` : ""}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 8 }}>
+                {savedFrameUrls.map((item) => (
+                  <button
+                    key={item.path}
+                    type="button"
+                    onClick={() => setFrameLightboxUrl(item.signedUrl)}
+                    style={{
+                      position: "relative",
+                      borderRadius: 6,
+                      overflow: "hidden",
+                      border: "1px solid #1e293b",
+                      padding: 0,
+                      cursor: "pointer",
+                      background: "#0a0f1a",
+                      aspectRatio: "1",
+                      width: "100%",
+                    }}
+                  >
+                    <img
+                      src={item.signedUrl}
+                      alt=""
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      onError={() => {
+                        setSavedFrameUrls((prev) => prev.filter((x) => x.path !== item.path));
+                      }}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div>
@@ -2374,6 +2474,62 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
           )}
         </div>
       </div>
+
+      {frameLightboxUrl && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Captured frame"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2100,
+            background: "rgba(0,0,0,0.72)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            boxSizing: "border-box",
+          }}
+          onClick={() => setFrameLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={(e) => {
+              e.stopPropagation();
+              setFrameLightboxUrl(null);
+            }}
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              width: 40,
+              height: 40,
+              borderRadius: 8,
+              border: "1px solid #334155",
+              background: "rgba(15,23,42,0.95)",
+              color: "#e2e8f0",
+              fontSize: 22,
+              lineHeight: 1,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontFamily: "system-ui, sans-serif",
+              padding: 0,
+            }}
+          >
+            ×
+          </button>
+          <img
+            src={frameLightboxUrl}
+            alt=""
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "90vw", maxHeight: "90vh", width: "auto", height: "auto", objectFit: "contain", display: "block" }}
+          />
+        </div>
+      )}
 
       {showYearGate && (
         <div
