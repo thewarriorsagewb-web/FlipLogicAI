@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { AIFinding, WalkthroughCaptureMode, WalkthroughModeDataEntry, PendingWalkthroughJob, PropertyChanges, AnalyzeWalkthroughResponse, VideoBurstMeta } from "./walkthroughTypes";
 import { normalizePropertyChanges } from "./walkthroughTypes";
@@ -13,18 +13,15 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type RehabCostSource = "initial" | "ai_walkthrough" | "manual";
 type ArvSource = "initial" | "comp_derived";
 
 interface DealInputs {
   propertyAddress: string;
   purchasePrice: number;
-  /** Computed from active rehab source — kept in sync for metrics + save */
+  /** Computed — mirrors rehabInitialEstimate for metrics + save */
   rehabCost: number;
-  /** Initial / baseline rehab figure (editable) */
+  /** Single user-editable rehab budget (persisted as rehab_initial_estimate / rehab_cost) */
   rehabInitialEstimate: number;
-  rehabManualOverride: number;
-  rehabCostSource: RehabCostSource;
   /** Computed from active ARV source — kept in sync for metrics + save */
   arv: number;
   arvInitialEstimate: number;
@@ -123,8 +120,6 @@ const BLANK_INPUTS: DealInputs = {
   propertyAddress: "",
   purchasePrice: 0,
   rehabInitialEstimate: 0,
-  rehabManualOverride: 0,
-  rehabCostSource: "initial",
   rehabCost: 0,
   arvInitialEstimate: 0,
   arvSource: "initial",
@@ -144,8 +139,6 @@ const DEMO_INPUTS: DealInputs = {
   propertyAddress: "123 Main St, Atlanta, GA 30301",
   purchasePrice: 120000,
   rehabInitialEstimate: 45000,
-  rehabManualOverride: 0,
-  rehabCostSource: "initial",
   rehabCost: 45000,
   arvInitialEstimate: 225000,
   arvSource: "initial",
@@ -231,18 +224,49 @@ function calculateCompARV(comps: Comp[], subjectSqft: number) {
   return { weightedArv, avgPpsf, strongAvg, allAvg };
 }
 
-function calculateAIWalkthroughRehab(scopeItems: ScopeItem[]): number {
-  return scopeItems.reduce((s, i) => s + (i.myEstimate || 0), 0);
+function aiFindingEstimatedCost(f: AIFinding): number {
+  const o = f as unknown as { estimatedCost?: unknown; estimated_cost?: unknown };
+  const v = o.estimatedCost ?? o.estimated_cost;
+  if (typeof v === "number" && !Number.isNaN(v)) return v;
+  if (typeof v === "string") {
+    const n = parseFloat(v);
+    return Number.isNaN(n) ? 0 : n;
+  }
+  return 0;
 }
 
-function calculateActiveRehab(inputs: DealInputs, scopeItems: ScopeItem[]): number {
-  if (inputs.rehabCostSource === "ai_walkthrough") {
-    return calculateAIWalkthroughRehab(scopeItems);
+/** Match walkthrough finding to SOW line (dedupe + pushed UI). */
+function normalizeScopeMatchDescription(s: string): string {
+  return (s || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function scopeItemEstimateNum(item: ScopeItem): number {
+  const v = item.myEstimate;
+  if (v == null || (typeof v === "number" && Number.isNaN(v))) return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function findingMatchesScopeItem(f: AIFinding, item: ScopeItem): boolean {
+  if (normalizeScopeMatchDescription(f.description) !== normalizeScopeMatchDescription(item.description)) return false;
+  return aiFindingEstimatedCost(f) === scopeItemEstimateNum(item);
+}
+
+function walkthroughFindingInScope(f: AIFinding, scopeItems: ScopeItem[]): boolean {
+  return scopeItems.some((it) => findingMatchesScopeItem(f, it));
+}
+
+/** Default / “Select all” — only indices not already represented in scope_items. */
+function selectionSetForUnpushedOnly(findings: AIFinding[], scopeItems: ScopeItem[]): Set<number> {
+  const s = new Set<number>();
+  for (let i = 0; i < findings.length; i++) {
+    if (!walkthroughFindingInScope(findings[i], scopeItems)) s.add(i);
   }
-  if (inputs.rehabCostSource === "manual") {
-    return inputs.rehabManualOverride;
-  }
-  return inputs.rehabInitialEstimate;
+  return s;
+}
+
+function calculateActiveRehab(inputs: DealInputs): number {
+  return inputs.rehabInitialEstimate || 0;
 }
 
 function calculateActiveARV(inputs: DealInputs, comps: Comp[], subjectSqft: number): number {
@@ -262,9 +286,73 @@ function calculateMAO(activeARV: number, activeRehab: number, maoPercent: number
 }
 
 function applySyncedRehabArv(d: Deal): Deal {
-  const r = calculateActiveRehab(d.inputs, d.scopeItems);
+  const r = calculateActiveRehab(d.inputs);
   const a = calculateActiveARV(d.inputs, d.comps, d.subjectSqft);
   return { ...d, inputs: { ...d.inputs, rehabCost: r, arv: a } };
+}
+
+const WALKTHROUGH_MODES_ORDER: WalkthroughCaptureMode[] = ["photos", "audio", "video", "audiovideo"];
+
+type WalkthroughMergedSummary = {
+  totalEstimate: number;
+  totalFindings: number;
+  modesWithFindings: WalkthroughCaptureMode[];
+  modesWithFrames: WalkthroughCaptureMode[];
+};
+
+function emptyWalkthroughMergedSummary(): WalkthroughMergedSummary {
+  return { totalEstimate: 0, totalFindings: 0, modesWithFindings: [], modesWithFrames: [] };
+}
+
+function computeWalkthroughMergedFromRows(rows: unknown[]): WalkthroughMergedSummary {
+  const modesWithFindings = new Set<WalkthroughCaptureMode>();
+  const modesWithFrames = new Set<WalkthroughCaptureMode>();
+  let totalEstimate = 0;
+  let totalFindings = 0;
+  for (const raw of rows) {
+    const r = raw as Record<string, unknown>;
+    const m = parseWalkthroughRowModeCol(r.mode);
+    if (!m) continue;
+    const findings = parseWalkthroughFindingsCol(r.findings);
+    for (const f of findings) {
+      totalEstimate += aiFindingEstimatedCost(f);
+      totalFindings += 1;
+    }
+    if (findings.length > 0) modesWithFindings.add(m);
+    const fp = parseWalkthroughFramePathsCol(r.frame_storage_paths);
+    if (fp.length > 0) modesWithFrames.add(m);
+  }
+  return {
+    totalEstimate,
+    totalFindings,
+    modesWithFindings: WALKTHROUGH_MODES_ORDER.filter((x) => modesWithFindings.has(x)),
+    modesWithFrames: WALKTHROUGH_MODES_ORDER.filter((x) => modesWithFrames.has(x)),
+  };
+}
+
+function modeAnalysisTitle(mode: WalkthroughCaptureMode): string {
+  if (mode === "photos") return "From Photos analysis";
+  if (mode === "audio") return "From Audio analysis";
+  if (mode === "video") return "From Video analysis";
+  return "From Audio + Video analysis";
+}
+
+function modeShortLabel(mode: WalkthroughCaptureMode): string {
+  if (mode === "photos") return "Photos";
+  if (mode === "audio") return "Audio";
+  if (mode === "video") return "Video";
+  return "Audio+Video";
+}
+
+function modeBadgeColor(mode: WalkthroughCaptureMode): string {
+  if (mode === "photos") return "#3b82f6";
+  if (mode === "audio") return "#22c55e";
+  if (mode === "video") return "#a855f7";
+  return "#f59e0b";
+}
+
+function findingRowKey(mode: WalkthroughCaptureMode, index: number): string {
+  return `${mode}:${index}`;
 }
 
 const fmt = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
@@ -724,19 +812,202 @@ function ResetPasswordScreen({ onDone }: { onDone: () => void }) {
 }
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
-function InputField({ label, value, onChange, prefix = "$", suffix = "", isMobile = false, hideLabel = false }: {
-  label: string; value: number; onChange: (v: number) => void; prefix?: string; suffix?: string; isMobile?: boolean; hideLabel?: boolean;
+function formatThousandsDisplay(n: number): string {
+  if (n == null || Number.isNaN(n)) return "";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0, useGrouping: true }).format(Math.round(n));
+}
+
+function parseThousandsInput(s: string): number {
+  const digits = s.replace(/[^\d]/g, "");
+  if (digits === "") return 0;
+  const n = parseInt(digits, 10);
+  return Number.isNaN(n) ? 0 : Math.min(n, 1e12);
+}
+
+function digitCountToLeft(s: string, cursor: number): number {
+  let n = 0;
+  const end = Math.min(Math.max(0, cursor), s.length);
+  for (let i = 0; i < end; i++) if (/\d/.test(s[i])) n += 1;
+  return n;
+}
+
+function cursorFromDigitCount(formatted: string, digitTarget: number): number {
+  if (digitTarget <= 0) return 0;
+  let seen = 0;
+  for (let i = 0; i < formatted.length; i++) {
+    if (/\d/.test(formatted[i])) {
+      seen += 1;
+      if (seen >= digitTarget) return i + 1;
+    }
+  }
+  return formatted.length;
+}
+
+function CurrencyDigitsInput({
+  value,
+  onChange,
+  isMobile = false,
+  "aria-label": ariaLabel,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  isMobile?: boolean;
+  "aria-label"?: string;
+}) {
+  const [txt, setTxt] = useState(() => formatThousandsDisplay(value));
+  const focusedRef = useRef(false);
+  useEffect(() => {
+    if (!focusedRef.current) setTxt(formatThousandsDisplay(value));
+  }, [value]);
+  const pad = isMobile ? "12px 14px" : "8px 10px";
+  const minH = isMobile ? 44 : undefined;
+  const baseInputStyle: CSSProperties = {
+    flex: 1,
+    width: "100%",
+    minWidth: 0,
+    background: "transparent",
+    border: "none",
+    outline: "none",
+    color: "#f1f5f9",
+    padding: pad,
+    fontSize: isMobile ? 16 : 14,
+    fontFamily: "'JetBrains Mono', monospace",
+    minHeight: minH,
+    boxSizing: "border-box",
+  };
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      aria-label={ariaLabel}
+      value={txt}
+      onFocus={() => {
+        focusedRef.current = true;
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        const n = parseThousandsInput(txt);
+        setTxt(formatThousandsDisplay(n));
+        onChange(n);
+      }}
+      onChange={(e) => {
+        const el = e.target;
+        const raw = el.value;
+        const sel = el.selectionStart ?? raw.length;
+        const digitsLeft = digitCountToLeft(raw, sel);
+        const n = parseThousandsInput(raw);
+        const formatted = formatThousandsDisplay(n);
+        setTxt(formatted);
+        onChange(n);
+        requestAnimationFrame(() => {
+          const pos = cursorFromDigitCount(formatted, digitsLeft);
+          try {
+            el.setSelectionRange(pos, pos);
+          } catch {
+            /* ignore */
+          }
+        });
+      }}
+      style={baseInputStyle}
+    />
+  );
+}
+
+function ReqStar() {
+  return <span style={{ color: "#ef4444", marginLeft: 3 }} aria-hidden>*</span>;
+}
+
+function EstimatedRehabCostField({
+  value,
+  onChange,
+  isMobile = false,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  isMobile?: boolean;
+}) {
+  const pad = isMobile ? "12px 14px" : "8px 10px";
+  const minH = isMobile ? 44 : undefined;
+  return (
+    <div style={{ marginBottom: isMobile ? 14 : 12 }}>
+      <label style={{ display: "block", fontSize: isMobile ? 12 : 11, color: "#94a3b8", marginBottom: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+        Estimated Rehab Cost <ReqStar />
+      </label>
+      <div style={{ display: "flex", alignItems: "center", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden", width: "100%", minHeight: minH }}>
+        <span style={{ padding: pad, color: "#475569", fontSize: isMobile ? 14 : 13, background: "#0a0f1a", borderRight: "1px solid #1e293b", display: "flex", alignItems: "center", minHeight: minH }}>$</span>
+        <CurrencyDigitsInput value={value} onChange={onChange} isMobile={isMobile} aria-label="Estimated rehab cost" />
+      </div>
+    </div>
+  );
+}
+
+function InputField({
+  label,
+  value,
+  onChange,
+  prefix = "$",
+  suffix = "",
+  isMobile = false,
+  hideLabel = false,
+  currency = false,
+  requiredMark = false,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  prefix?: string;
+  suffix?: string;
+  isMobile?: boolean;
+  hideLabel?: boolean;
+  /** Whole-dollar comma formatting (no decimals). */
+  currency?: boolean;
+  requiredMark?: boolean;
 }) {
   const pad = isMobile ? "12px 14px" : "8px 10px";
   const minH = isMobile ? 44 : undefined;
   return (
     <div style={{ marginBottom: hideLabel ? 0 : isMobile ? 14 : 12 }}>
-      {!hideLabel && <label style={{ display: "block", fontSize: isMobile ? 12 : 11, color: "#94a3b8", marginBottom: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</label>}
+      {!hideLabel && (
+        <label style={{ display: "block", fontSize: isMobile ? 12 : 11, color: "#94a3b8", marginBottom: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+          {label}
+          {requiredMark ? <ReqStar /> : null}
+        </label>
+      )}
       <div style={{ display: "flex", alignItems: "center", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, overflow: "hidden", width: "100%", minHeight: minH }}>
-        {prefix && <span style={{ padding: pad, color: "#475569", fontSize: isMobile ? 14 : 13, background: "#0a0f1a", borderRight: "1px solid #1e293b", display: "flex", alignItems: "center", minHeight: minH }}>{prefix}</span>}
-        <input type="number" value={value || ""} onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-          style={{ flex: 1, width: "100%", minWidth: 0, background: "transparent", border: "none", outline: "none", color: "#f1f5f9", padding: pad, fontSize: isMobile ? 16 : 14, fontFamily: "'JetBrains Mono', monospace", minHeight: minH, boxSizing: "border-box" }} />
-        {suffix && <span style={{ padding: pad, color: "#475569", fontSize: isMobile ? 14 : 13, background: "#0a0f1a", borderLeft: "1px solid #1e293b", display: "flex", alignItems: "center", minHeight: minH }}>{suffix}</span>}
+        {prefix !== "" && (
+          <span style={{ padding: pad, color: "#475569", fontSize: isMobile ? 14 : 13, background: "#0a0f1a", borderRight: "1px solid #1e293b", display: "flex", alignItems: "center", minHeight: minH }}>
+            {prefix}
+          </span>
+        )}
+        {currency ? (
+          <CurrencyDigitsInput value={value} onChange={onChange} isMobile={isMobile} aria-label={label || "Amount"} />
+        ) : (
+          <input
+            type="number"
+            value={value || ""}
+            onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+            style={{
+              flex: 1,
+              width: "100%",
+              minWidth: 0,
+              background: "transparent",
+              border: "none",
+              outline: "none",
+              color: "#f1f5f9",
+              padding: pad,
+              fontSize: isMobile ? 16 : 14,
+              fontFamily: "'JetBrains Mono', monospace",
+              minHeight: minH,
+              boxSizing: "border-box",
+            }}
+          />
+        )}
+        {suffix && (
+          <span style={{ padding: pad, color: "#475569", fontSize: isMobile ? 14 : 13, background: "#0a0f1a", borderLeft: "1px solid #1e293b", display: "flex", alignItems: "center", minHeight: minH }}>
+            {suffix}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -1462,9 +1733,13 @@ function formatWalkthroughSavedFramesCaption(iso: string | null): string {
   });
 }
 
-function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile = false, dealId, userId, currentDeal, canUseAI, triggerAIUse, onNeedPaywall,
+function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, onWalkthroughFindingsChanged, sowTotalFromScope, isMobile = false, dealId, userId, currentDeal, canUseAI, triggerAIUse, onNeedPaywall,
   propertyChangeBanner, onPropertyChangeFromAnalysis, onAcceptPropertyChangeBanner, onDismissPropertyChangeBanner, onModifyPropertySpecsManually }: {
-  address: string; onUpdateYearBuilt: (y: number | null) => void; onAddToScope: (items: ScopeItem[]) => void; isMobile?: boolean;
+  address: string; onUpdateYearBuilt: (y: number | null) => void; onAddToScope: (items: ScopeItem[]) => void;
+  onWalkthroughFindingsChanged?: () => void;
+  /** Sum of scope_items.my_estimate for this deal (from parent state). */
+  sowTotalFromScope: number;
+  isMobile?: boolean;
   dealId: string; userId: string;
   currentDeal: Deal;
   canUseAI: (deal: AIGateDeal) => boolean;
@@ -1477,7 +1752,8 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   onModifyPropertySpecsManually: () => void;
 }) {
   const [walkMode, setWalkMode] = useState<WalkthroughCaptureMode>("photos");
-  const [triggerPhrase, setTriggerPhrase] = useState(() => localStorage.getItem(WALKTHROUGH_TRIGGER_KEY) || "flag this");
+  /** Phrase still passed to recorder for legacy desktop speech-recognition paths; not user-configurable in UI. */
+  const triggerPhrase = useMemo(() => localStorage.getItem(WALKTHROUGH_TRIGGER_KEY) || "flag this", []);
   const [pendingJobs, setPendingJobs] = useState<PendingWalkthroughJob[]>(() => loadPendingJobs());
   const [syncingJobId, setSyncingJobId] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(() => typeof navigator !== "undefined" && navigator.onLine);
@@ -1491,12 +1767,24 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   const [selectedByMode, setSelectedByMode] = useState<Record<WalkthroughCaptureMode, Set<number>>>(() => emptyWalkthroughSelections());
   const [savedFrameUrls, setSavedFrameUrls] = useState<Array<{ path: string; signedUrl: string }>>([]);
   const [frameLightboxUrl, setFrameLightboxUrl] = useState<string | null>(null);
+  const [hideUnpushedProposed, setHideUnpushedProposed] = useState(false);
   const [localBuildYear, setLocalBuildYear] = useState("");
   const [showYearGate, setShowYearGate] = useState(false);
   const [yearGateInput, setYearGateInput] = useState("");
   const [yearGateError, setYearGateError] = useState("");
   const yearGateResolveRef = useRef<((r: { buildYear: number }) => void) | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [mediaWaitPhaseIdx, setMediaWaitPhaseIdx] = useState(0);
+
+  const mediaWaitPhaseLabels = ["Uploading media…", "Analyzing with AI…", "Processing findings…"] as const;
+  useEffect(() => {
+    if (!mediaAnalyzing && !syncingJobId) {
+      setMediaWaitPhaseIdx(0);
+      return;
+    }
+    const t = window.setInterval(() => setMediaWaitPhaseIdx((i) => (i + 1) % 3), 6500);
+    return () => window.clearInterval(t);
+  }, [mediaAnalyzing, syncingJobId]);
 
   const activeWalkthroughEntry = modeData[walkMode];
   const findings = activeWalkthroughEntry?.findings ?? [];
@@ -1587,6 +1875,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   useEffect(() => {
     if (!dealId || !userId) return;
     let cancelled = false;
+    setHideUnpushedProposed(false);
     void (async () => {
       setModeData(emptyWalkthroughModeData());
       setSelectedByMode(emptyWalkthroughSelections());
@@ -1616,11 +1905,12 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
         const timestamp =
           typeof uAt === "string" && uAt.length > 0 ? uAt : typeof cAt === "string" && cAt.length > 0 ? cAt : new Date().toISOString();
         next[m] = { findings: f, transcript, frame_storage_paths: framePaths, timestamp };
-        sel[m] = f.length > 0 ? new Set(f.map((_, i) => i)) : new Set();
+        sel[m] = selectionSetForUnpushedOnly(f, currentDeal.scopeItems);
       }
       if (!cancelled) {
         setModeData(next);
         setSelectedByMode(sel);
+        window.setTimeout(() => onWalkthroughFindingsChanged?.(), 0);
       }
     })();
     return () => { cancelled = true; };
@@ -1677,11 +1967,6 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
     setStatus("");
   }, [walkMode]);
 
-  const saveTriggerPhrase = (t: string) => {
-    setTriggerPhrase(t);
-    localStorage.setItem(WALKTHROUGH_TRIGGER_KEY, t);
-  };
-
   const syncPendingJob = async (job: PendingWalkthroughJob) => {
     if (!navigator.onLine) return;
     if (!canUseAI(currentDeal)) {
@@ -1689,8 +1974,10 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
       return;
     }
     const { buildYear: apiBy } = await waitForYearGate();
+    setHideUnpushedProposed(false);
     setSyncingJobId(job.id);
     setError("");
+    setStatus("Analyzing with AI…");
     try {
       const { data, error: fnErr } = await supabase.functions.invoke("analyze-walkthrough", {
         body: { ...job.payload, buildYear: apiBy },
@@ -1699,6 +1986,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
       const res = data as AnalyzeWalkthroughResponse;
       const parsed = res.findings;
       if (!parsed || !Array.isArray(parsed)) throw new Error("Invalid response from analyze-walkthrough");
+      setStatus("Processing findings…");
       const jobMode = job.mode;
       const payload =
         typeof job.payload === "object" && job.payload != null && !Array.isArray(job.payload)
@@ -1790,7 +2078,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
           timestamp: persistedTimestamp,
         },
       }));
-      setSelectedByMode((pb) => ({ ...pb, [jobMode]: new Set(parsed.map((_, i) => i)) }));
+      setSelectedByMode((pb) => ({ ...pb, [jobMode]: selectionSetForUnpushedOnly(parsed, currentDeal.scopeItems) }));
       onPropertyChangeFromAnalysis(normalizePropertyChanges(res.propertyChanges));
       setStatus(`Synced — ${parsed.length} findings identified.`);
       if (!upsertErr) {
@@ -1799,6 +2087,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
         setPendingJobs(next);
       }
       await triggerAIUse(dealId);
+      onWalkthroughFindingsChanged?.();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Sync failed.");
     } finally {
@@ -1827,6 +2116,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
       return;
     }
     const { buildYear: apiBy } = await waitForYearGate();
+    setHideUnpushedProposed(false);
     setAnalyzing(true);
     setError("");
     setModeData((prev) => ({
@@ -1885,6 +2175,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
       const serverError = res.error;
       if (serverError) throw new Error(serverError);
       if (!findingsRows || !Array.isArray(findingsRows)) throw new Error("Invalid response: " + JSON.stringify(data));
+      setStatus("Processing findings…");
       setModeData((prev) => ({
         ...prev,
         photos: {
@@ -1894,7 +2185,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
           timestamp: prev.photos?.timestamp ?? new Date().toISOString(),
         },
       }));
-      setSelectedByMode((pb) => ({ ...pb, photos: new Set(findingsRows.map((_, idx) => idx)) }));
+      setSelectedByMode((pb) => ({ ...pb, photos: selectionSetForUnpushedOnly(findingsRows, currentDeal.scopeItems) }));
       onPropertyChangeFromAnalysis(normalizePropertyChanges(res.propertyChanges));
       setStatus(`Analysis complete — ${findingsRows.length} findings identified.`);
 
@@ -1950,7 +2241,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
               timestamp: ts,
             },
           }));
-          setSelectedByMode((pb) => ({ ...pb, photos: new Set(findingsRows.map((_, idx) => idx)) }));
+          setSelectedByMode((pb) => ({ ...pb, photos: selectionSetForUnpushedOnly(findingsRows, currentDeal.scopeItems) }));
         }
       } catch (persistErr: unknown) {
         console.error("[analyze photos] Could not persist walkthrough_findings:", persistErr);
@@ -1959,28 +2250,106 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
       setError(err instanceof Error ? err.message : "Analysis failed.");
     } finally {
       setAnalyzing(false);
+      onWalkthroughFindingsChanged?.();
     }
   };
 
-  const toggleFinding = (i: number) => {
+  const toggleFindingGlobal = (mode: WalkthroughCaptureMode, i: number) => {
+    const fds = modeData[mode]?.findings;
+    const f = fds?.[i];
+    if (!f || walkthroughFindingInScope(f, currentDeal.scopeItems)) return;
     setSelectedByMode((prev) => {
-      const cur = new Set(prev[walkMode]);
+      const cur = new Set(prev[mode]);
       if (cur.has(i)) cur.delete(i);
       else cur.add(i);
-      return { ...prev, [walkMode]: cur };
+      return { ...prev, [mode]: cur };
     });
   };
 
-  const handleAddToScope = () => {
-    const items: ScopeItem[] = Array.from(selectedFindings).map((i) => {
-      const f = findings[i];
-      return { id: uid(), category: f.category, description: f.description, quantity: 1, unit: "lot", myEstimate: f.estimatedCost, notes: f.notes + (f.hazmat ? " ⚠ HAZMAT FLAG" : ""), priority: f.priority };
-    });
+  const toPushSelectedTotal = useMemo(() => {
+    let s = 0;
+    for (const mode of WALKTHROUGH_MODES_ORDER) {
+      const fds = modeData[mode]?.findings ?? [];
+      const sel = selectedByMode[mode];
+      for (let i = 0; i < fds.length; i++) {
+        const f = fds[i];
+        if (walkthroughFindingInScope(f, currentDeal.scopeItems)) continue;
+        if (!sel.has(i)) continue;
+        s += aiFindingEstimatedCost(f);
+      }
+    }
+    return s;
+  }, [modeData, selectedByMode, currentDeal.scopeItems]);
+
+  const proposedPushSelectionCount = useMemo(() => {
+    let c = 0;
+    for (const mode of WALKTHROUGH_MODES_ORDER) {
+      const fds = modeData[mode]?.findings ?? [];
+      const sel = selectedByMode[mode];
+      for (let i = 0; i < fds.length; i++) {
+        const f = fds[i];
+        if (walkthroughFindingInScope(f, currentDeal.scopeItems)) continue;
+        if (sel.has(i)) c += 1;
+      }
+    }
+    return c;
+  }, [modeData, selectedByMode, currentDeal.scopeItems]);
+
+  const allHazmatFindings = useMemo(() => {
+    const out: { mode: WalkthroughCaptureMode; f: AIFinding }[] = [];
+    for (const m of WALKTHROUGH_MODES_ORDER) {
+      for (const f of modeData[m]?.findings ?? []) {
+        if (f.hazmat) out.push({ mode: m, f });
+      }
+    }
+    return out;
+  }, [modeData]);
+
+  const pushSelectedFindingsToSow = () => {
+    const virtualScope: ScopeItem[] = [...currentDeal.scopeItems];
+    const items: ScopeItem[] = [];
+    let skipped = 0;
+    for (const mode of WALKTHROUGH_MODES_ORDER) {
+      const fds = modeData[mode]?.findings ?? [];
+      const sel = selectedByMode[mode];
+      for (let i = 0; i < fds.length; i++) {
+        if (!sel.has(i)) continue;
+        const f = fds[i];
+        if (walkthroughFindingInScope(f, virtualScope)) {
+          skipped += 1;
+          continue;
+        }
+        const cost = aiFindingEstimatedCost(f);
+        const newItem: ScopeItem = {
+          id: uid(),
+          category: f.category,
+          description: f.description,
+          quantity: 1,
+          unit: "lot",
+          myEstimate: cost,
+          notes: f.notes + (f.hazmat ? " ⚠ HAZMAT FLAG" : ""),
+          priority: f.priority,
+        };
+        items.push(newItem);
+        virtualScope.push(newItem);
+      }
+    }
+    if (items.length === 0) {
+      if (skipped > 0) {
+        setStatus(`No new items to add — ${skipped} selected finding(s) already match your Scope of Work.`);
+      }
+      return;
+    }
     onAddToScope(items);
+    let msg = `Pushed ${items.length} finding(s) to Scope of Work.`;
+    if (skipped > 0) {
+      msg += ` ${skipped} finding(s) were already in your SOW and were skipped.`;
+    }
+    setStatus(msg);
   };
 
-  const hazmatFindings = findings.filter((f) => f.hazmat);
-  const totalEstimate = findings.filter((_, i) => selectedFindings.has(i)).reduce((s, f) => s + f.estimatedCost, 0);
+  const pushButtonDisabled = proposedPushSelectionCount === 0 || analyzing || mediaAnalyzing;
+
   const savedFramesCaptionText = formatWalkthroughSavedFramesCaption(savedFrameTimestamp);
 
   const showPropertyChangeBanner = Boolean(
@@ -1998,54 +2367,32 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
   ];
 
   const howItWorksPhotos: { icon: string; text: string }[] = [
-    { icon: "1️⃣", text: "Photos are analyzed securely via FlipLogic AI — no API key required" },
-    { icon: "2️⃣", text: "Select photos for analysis (up to 20) using the circle in the top-left. Click Analyze with AI or Delete below." },
-    { icon: "3️⃣", text: "Set the property build year above — pre-1978 homes automatically trigger lead paint warnings" },
-    { icon: "4️⃣", text: "Tap Analyze Photos — AI identifies every repair item visible in your photos and estimates costs" },
+    { icon: "1️⃣", text: "Upload up to 200 photos per deal. They save to your FlipLogic account in the cloud and stay available across tabs, sessions, and devices." },
+    { icon: "2️⃣", text: "Flag up to 20 photos per analysis run (circle in the top-left). Use Select All / Deselect All or tap individual photos. Delete photos anytime (one-by-one or bulk)." },
+    { icon: "3️⃣", text: "Set the property build year above — pre-1978 homes automatically trigger lead paint warnings." },
+    { icon: "4️⃣", text: "Tap Analyze — FlipLogic AI reads your flagged photos, detects scope items, and estimates repair costs. Results merge into Proposed Scope of Work for you to push to the SOW tab." },
   ];
-  const howItWorksByMode: Record<WalkthroughCaptureMode, { icon: string; text: string }[]> = isMobileDevice()
-    ? {
-        photos: howItWorksPhotos,
-        audio: [
-          { icon: "1️⃣", text: "Tap the 🚩 Flag button during recording to mark moments for review." },
-          { icon: "2️⃣", text: "Tap Record and walk the property. Speak naturally — describe everything you see out loud" },
-          { icon: "3️⃣", text: "Tap 🚩 Flag This to mark moments that need attention as you walk." },
-          { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI transcribes your audio and generates a scope of work" },
-        ],
-        video: [
-          { icon: "1️⃣", text: "Tap the 🚩 Flag button during recording to mark moments for review." },
-          { icon: "2️⃣", text: "Tap Record — uses your rear camera with frames captured every 3 seconds alongside your audio" },
-          { icon: "3️⃣", text: "Describe what you see. Tap 🚩 Flag This to mark key moments for review during your walk." },
-          { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI analyzes both your audio transcript and video frames" },
-        ],
-        audiovideo: [
-          { icon: "1️⃣", text: "Tap the 🚩 Flag button during recording to mark moments for review." },
-          { icon: "2️⃣", text: "Tap Record for continuous audio. Tap 🎥 Capture Video for 5-second video bursts at key moments" },
-          { icon: "3️⃣", text: "Describe what you see. Tap 🚩 Flag This to mark key moments for review during your walk." },
-          { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI uses your full audio timeline plus video bursts" },
-        ],
-      }
-    : {
-        photos: howItWorksPhotos,
-        audio: [
-          { icon: "1️⃣", text: "Set your trigger phrase above (default: 'flag this') — say it out loud during the walk to automatically flag important moments" },
-          { icon: "2️⃣", text: "Tap Record and walk the property. Speak naturally — describe everything you see out loud" },
-          { icon: "3️⃣", text: "Tap 🚩 Flag This or say your trigger phrase to mark moments that need attention" },
-          { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI transcribes your audio and generates a scope of work" },
-        ],
-        video: [
-          { icon: "1️⃣", text: "Set your trigger phrase above (default: 'flag this') — say it out loud during the walk to automatically flag important moments" },
-          { icon: "2️⃣", text: "Tap Record — uses your rear camera with frames captured every 3 seconds alongside your audio" },
-          { icon: "3️⃣", text: "Speak naturally and describe what you see. Tap 🚩 Flag This or say your trigger phrase to mark key moments" },
-          { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI analyzes both your audio transcript and video frames" },
-        ],
-        audiovideo: [
-          { icon: "1️⃣", text: "Set your trigger phrase above (default: 'flag this') — say it out loud during the walk to automatically flag important moments" },
-          { icon: "2️⃣", text: "Tap Record for continuous audio. Tap 🎥 Capture Video for 5-second video bursts at key moments" },
-          { icon: "3️⃣", text: "Speak naturally and describe what you see. Tap 🚩 Flag This or say your trigger phrase to mark key moments" },
-          { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI uses your full audio timeline plus video bursts" },
-        ],
-      };
+  const howItWorksByMode: Record<WalkthroughCaptureMode, { icon: string; text: string }[]> = {
+    photos: howItWorksPhotos,
+    audio: [
+      { icon: "1️⃣", text: "Tap the 🚩 Flag button during recording to mark moments you want the AI to focus on." },
+      { icon: "2️⃣", text: "Tap Record and walk the property. Speak naturally — describe everything you see out loud." },
+      { icon: "3️⃣", text: "Use 🚩 Flag whenever you spot damage, upgrades, or anything you want captured in the scope." },
+      { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI transcribes your audio and generates scope items." },
+    ],
+    video: [
+      { icon: "1️⃣", text: "Tap the 🚩 Flag button during recording to mark moments for review." },
+      { icon: "2️⃣", text: "Tap Record — uses your rear camera with frames captured every 3 seconds alongside your audio." },
+      { icon: "3️⃣", text: "Describe what you see. Tap 🚩 Flag to mark key moments for the AI." },
+      { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI analyzes both your audio transcript and video frames." },
+    ],
+    audiovideo: [
+      { icon: "1️⃣", text: "Tap the 🚩 Flag button during recording to mark moments for review." },
+      { icon: "2️⃣", text: "Tap Record for continuous audio. Tap 🎥 Capture Video for 5-second video bursts at key moments." },
+      { icon: "3️⃣", text: "Describe what you see. Tap 🚩 Flag to mark key moments for the AI." },
+      { icon: "4️⃣", text: "Tap Stop then Analyze Walkthrough — AI uses your full audio timeline plus video bursts." },
+    ],
+  };
 
   const tabBtnBase = {
     flex: isMobile ? "1 1 45%" : "1 1 0",
@@ -2070,6 +2417,240 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
 
   return (
     <div>
+      {(analyzing || mediaAnalyzing || syncingJobId) && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 14,
+            marginBottom: 18,
+            padding: isMobile ? "14px 16px" : "16px 18px",
+            borderRadius: 10,
+            border: "1px solid #334155",
+            background: "linear-gradient(135deg, rgba(30, 58, 95, 0.35), rgba(15, 23, 42, 0.95))",
+            boxSizing: "border-box",
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <style>{`@keyframes flAiSpin { to { transform: rotate(360deg); } }`}</style>
+          <Loader2
+            style={{
+              width: 22,
+              height: 22,
+              color: "#60a5fa",
+              animation: "flAiSpin 0.85s linear infinite",
+              flexShrink: 0,
+              marginTop: 2,
+            }}
+            aria-hidden
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: isMobile ? 14 : 13, fontWeight: 700, color: "#e2e8f0", lineHeight: 1.35 }}>
+              {analyzing && status.trim().length > 0 ? status : mediaWaitPhaseLabels[mediaWaitPhaseIdx]}
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
+              This usually takes 30–60 seconds. Keep this tab open until the run finishes.
+            </div>
+          </div>
+        </div>
+      )}
+      <div
+        style={{
+          marginBottom: 22,
+          padding: isMobile ? 16 : 20,
+          borderRadius: 12,
+          border: "1px solid #334155",
+          background: "linear-gradient(145deg, rgba(30, 58, 95, 0.22), rgba(10, 15, 26, 0.98))",
+          boxSizing: "border-box",
+          maxWidth: "100%",
+        }}
+      >
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: isMobile ? 16 : 17, fontWeight: 800, color: "#e2e8f0", fontFamily: "'Syne', sans-serif", marginBottom: 4 }}>Proposed Scope of Work</div>
+          <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.45 }}>Merged from all AI Walkthrough analyses on this deal</div>
+        </div>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", flexWrap: "wrap", gap: 14, alignItems: isMobile ? "stretch" : "flex-end", marginBottom: 16 }}>
+          <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+            <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 800, color: "#f1f5f9", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{fmt(toPushSelectedTotal)}</div>
+            <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 4 }}>To push</div>
+            <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>Selected items not yet in your SOW</div>
+            <div style={{ fontSize: 14, color: "#94a3b8", marginTop: 10, fontFamily: "'JetBrains Mono', monospace" }}>Current SOW Total: {fmt(sowTotalFromScope)}</div>
+          </div>
+        </div>
+        <div style={{ maxHeight: isMobile ? 260 : 320, overflowY: "auto", marginBottom: 12, paddingRight: 2, WebkitOverflowScrolling: "touch" }}>
+          {(() => {
+            type Row = { mode: WalkthroughCaptureMode; i: number; f: AIFinding };
+            const rows: Row[] = [];
+            for (const mode of WALKTHROUGH_MODES_ORDER) {
+              const fds = modeData[mode]?.findings ?? [];
+              for (let i = 0; i < fds.length; i++) {
+                const inScope = walkthroughFindingInScope(fds[i], currentDeal.scopeItems);
+                if (hideUnpushedProposed && !inScope) continue;
+                rows.push({ mode, i, f: fds[i] });
+              }
+            }
+            if (rows.length === 0) {
+              return (
+                <div style={{ fontSize: 13, color: "#64748b", padding: "10px 0", lineHeight: 1.55 }}>
+                  {hideUnpushedProposed
+                    ? "Unpushed findings are hidden from this view. Lines already in your SOW stay visible with Pushed badges. Run Analyze on a mode to refresh proposed items."
+                    : "No findings yet. Record or upload media using a mode below, then run Analyze."}
+                </div>
+              );
+            }
+            return rows.map((row, idx) => {
+              const { mode, i, f } = row;
+              const inScope = walkthroughFindingInScope(f, currentDeal.scopeItems);
+              const showHeader = idx === 0 || rows[idx - 1]!.mode !== mode;
+              const key = findingRowKey(mode, i);
+              const p = PRIORITY_STYLES[f.priority];
+              const cost = aiFindingEstimatedCost(f);
+              const selected = selectedByMode[mode].has(i);
+              return (
+                <div key={key}>
+                  {showHeader ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: idx === 0 ? 0 : 14, marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1" }}>{modeAnalysisTitle(mode)}</div>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          background: `${modeBadgeColor(mode)}22`,
+                          color: modeBadgeColor(mode),
+                          border: `1px solid ${modeBadgeColor(mode)}66`,
+                        }}
+                      >
+                        {modeShortLabel(mode)}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div
+                    role={inScope ? undefined : "button"}
+                    tabIndex={inScope ? -1 : 0}
+                    onClick={() => {
+                      if (!inScope) toggleFindingGlobal(mode, i);
+                    }}
+                    onKeyDown={(e) => {
+                      if (inScope) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleFindingGlobal(mode, i);
+                      }
+                    }}
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "flex-start",
+                      padding: "10px 10px",
+                      marginBottom: 8,
+                      borderRadius: 8,
+                      border: `1px solid ${inScope ? "#14532d" : selected ? "#2563eb" : "#1e293b"}`,
+                      background: inScope ? "rgba(20,83,45,0.1)" : selected ? "#0d1829" : "#0a0f1a",
+                      cursor: inScope ? "default" : "pointer",
+                      outline: "none",
+                      opacity: inScope ? 0.72 : 1,
+                    }}
+                  >
+                    <div style={{ paddingTop: 2, flexShrink: 0, minWidth: 76 }}>
+                      {inScope ? (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: "4px 8px",
+                            borderRadius: 4,
+                            background: "rgba(34,197,94,0.12)",
+                            color: "#4ade80",
+                            border: "1px solid #166534",
+                            display: "inline-block",
+                          }}
+                        >
+                          Pushed
+                        </span>
+                      ) : (
+                        <input type="checkbox" readOnly checked={selected} style={{ width: 18, height: 18, accentColor: "#3b82f6", cursor: "pointer", pointerEvents: "none" }} />
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", gap: 8, alignItems: isMobile ? "flex-start" : "flex-start" }}>
+                        <div style={{ fontSize: 13, color: "#f1f5f9", lineHeight: 1.4 }}>{f.description}</div>
+                        <div style={{ display: "flex", flexDirection: isMobile ? "row" : "row", flexWrap: "wrap", gap: 6, alignItems: "center", justifyContent: isMobile ? "space-between" : "flex-end", width: isMobile ? "100%" : "auto", flexShrink: 0 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#22c55e", fontFamily: "monospace" }}>{fmt(cost)}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "#1e293b", color: "#94a3b8" }}>{modeShortLabel(mode)}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6, alignItems: "center" }}>
+                        <span style={{ background: p.bg, border: `1px solid ${p.border}`, borderRadius: 3, padding: "1px 6px", fontSize: 9, color: p.color, fontWeight: 700 }}>{p.label}</span>
+                        <span style={{ fontSize: 11, color: "#60a5fa" }}>{f.category}</span>
+                        {f.hazmat ? <span style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 3, padding: "1px 6px", fontSize: 9, color: "#f59e0b", fontWeight: 700 }}>⚠ HAZMAT</span> : null}
+                      </div>
+                      {f.notes ? <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>{f.notes}</div> : null}
+                    </div>
+                  </div>
+                </div>
+              );
+            });
+          })()}
+        </div>
+        {allHazmatFindings.length > 0 && (
+          <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700, marginBottom: 6 }}>⚠ Hazmat flagged in proposed findings</div>
+            {allHazmatFindings.map(({ mode, f }, idx) => (
+              <div key={`${mode}-${idx}-${f.description}`} style={{ fontSize: 11, color: "#94a3b8", marginBottom: 3 }}>
+                • [{modeShortLabel(mode)}] {f.description}
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", flexWrap: "wrap", gap: 10, alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between" }}>
+          <button
+            type="button"
+            onClick={pushSelectedFindingsToSow}
+            disabled={pushButtonDisabled}
+            style={{
+              flex: isMobile ? "none" : "1 1 280px",
+              width: isMobile ? "100%" : "auto",
+              border: "none",
+              borderRadius: 8,
+              color: "#fff",
+              padding: isMobile ? "14px 16px" : "12px 18px",
+              minHeight: isMobile ? 48 : 44,
+              fontSize: isMobile ? 14 : 13,
+              fontWeight: 700,
+              cursor: pushButtonDisabled ? "not-allowed" : "pointer",
+              fontFamily: "'Syne', sans-serif",
+              background: pushButtonDisabled ? "#1e293b" : "linear-gradient(135deg, #16a34a, #15803d)",
+              opacity: pushButtonDisabled ? 0.55 : 1,
+            }}
+          >
+            {pushButtonDisabled ? "Nothing to push" : "Push Selected Findings to SOW"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!window.confirm("Hide findings that are not already in your Scope of Work from this view? Items that match your SOW stay visible with Pushed badges. Your saved walkthrough analyses are not deleted.")) return;
+              setHideUnpushedProposed(true);
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#94a3b8",
+              fontSize: 13,
+              cursor: "pointer",
+              textDecoration: "underline",
+              padding: isMobile ? "8px 0" : "8px 4px",
+              fontFamily: "'Syne', sans-serif",
+              textAlign: isMobile ? "center" : "right",
+            }}
+          >
+            Clear all proposed findings
+          </button>
+        </div>
+      </div>
+
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 18 }}>
         {modeTabs.map((m) => {
           const active = walkMode === m.id;
@@ -2122,7 +2703,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 340px", gap: isMobile ? 20 : 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: isMobile ? 20 : 24 }}>
         <div>
           <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: 16, marginBottom: 16, background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: isMobile ? 14 : 14 }}>
             <div>
@@ -2491,7 +3072,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                         opacity: analyzing || photosLoading || analyzeOverAiCap ? 0.65 : 1,
                       }}
                     >
-                      {analyzing ? (status || "Working…") : analyzeOverAiCap ? "Maximum 20 for AI" : `Analyze ${flaggedCount} ${flaggedCount === 1 ? "Photo" : "Photos"} with AI`}
+                      {analyzing ? "Analyzing…" : analyzeOverAiCap ? "Maximum 20 for AI" : `Analyze ${flaggedCount} ${flaggedCount === 1 ? "Photo" : "Photos"} with AI`}
                     </button>
                   </div>
                 </div>
@@ -2501,20 +3082,9 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
 
           {walkMode !== "photos" && (
             <div style={{ marginBottom: 16 }}>
-              {isMobileDevice() ? (
-                <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.45, marginBottom: 14 }}>🚩 Tap the Flag button to mark moments during recording. (Voice trigger is desktop-only.)</div>
-              ) : (
-                <>
-                  <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Voice trigger phrase</div>
-                  <input
-                    type="text"
-                    value={triggerPhrase}
-                    onChange={(e) => saveTriggerPhrase(e.target.value)}
-                    placeholder="flag this"
-                    style={{ width: "100%", boxSizing: "border-box", minHeight: 48, background: "#060b14", border: "1px solid #1e293b", borderRadius: 8, color: "#f1f5f9", padding: "12px 14px", fontSize: 15, marginBottom: 14 }}
-                  />
-                </>
-              )}
+              <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.45, marginBottom: 14 }}>
+                🚩 Tap the Flag button during recording to mark moments for the AI. Speak clearly while you walk — that transcript drives your scope.
+              </div>
               <WalkthroughMediaRecorder
                 key={walkMode}
                 mode={walkMode as "audio" | "video" | "audiovideo"}
@@ -2531,6 +3101,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                 onNeedPaywall={onNeedPaywall}
                 onBeforeAnalyze={waitForYearGate}
                 onFindings={(f, transcript) => {
+                  setHideUnpushedProposed(false);
                   setModeData((prev) => ({
                     ...prev,
                     [walkMode]: {
@@ -2540,8 +3111,9 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                       timestamp: prev[walkMode]?.timestamp ?? new Date().toISOString(),
                     },
                   }));
-                  setSelectedByMode((pb) => ({ ...pb, [walkMode]: new Set(f.map((_, i) => i)) }));
+                  setSelectedByMode((pb) => ({ ...pb, [walkMode]: selectionSetForUnpushedOnly(f, currentDeal.scopeItems) }));
                   setStatus(`Analysis complete — ${f.length} findings identified.`);
+                  window.setTimeout(() => onWalkthroughFindingsChanged?.(), 0);
                 }}
                 onWalkthroughPersisted={({ frame_storage_paths, timestamp }) => {
                   setModeData((prev) => {
@@ -2558,6 +3130,18 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
 
           {status && !analyzing && !mediaAnalyzing && <div style={{ background: "#0d3d1f", border: "1px solid #16a34a", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#22c55e", marginBottom: 12 }}>✓ {status}</div>}
           {error && <div style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 12 }}>✗ {error}</div>}
+
+          {findings.length === 0 && (
+            <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12, fontWeight: 700, textTransform: "uppercase" }}>How It Works — {modeTabs.find((x) => x.id === walkMode)?.label}</div>
+              {howItWorksByMode[walkMode].map((item, idx) => (
+                <div key={idx} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
+                  <span style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>{item.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {showPropertyChangeBanner && propertyChangeBanner && (
             <div
@@ -2618,17 +3202,36 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
           {findings.length > 0 && (
             <div>
               <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 10 : 0, marginBottom: 12 }}>
-                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}>AI Findings — Select items to add to Scope</div>
+                <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}>AI Findings — selection syncs with Proposed Scope of Work above</div>
                 <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                  <button type="button" onClick={() => setSelectedByMode((pb) => ({ ...pb, [walkMode]: new Set(findings.map((_, i) => i)) }))} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#94a3b8", padding: isMobile ? "10px 14px" : "4px 10px", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 13 : 11, cursor: "pointer" }}>All</button>
+                  <button type="button" onClick={() => setSelectedByMode((pb) => ({ ...pb, [walkMode]: selectionSetForUnpushedOnly(findings, currentDeal.scopeItems) }))} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#94a3b8", padding: isMobile ? "10px 14px" : "4px 10px", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 13 : 11, cursor: "pointer" }}>All</button>
                   <button type="button" onClick={() => setSelectedByMode((pb) => ({ ...pb, [walkMode]: new Set() }))} style={{ background: "transparent", border: "1px solid #1e293b", borderRadius: 6, color: "#94a3b8", padding: isMobile ? "10px 14px" : "4px 10px", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 13 : 11, cursor: "pointer" }}>None</button>
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {findings.map((f, i) => {
-                  const p = PRIORITY_STYLES[f.priority]; const selected = selectedFindings.has(i);
+                  const p = PRIORITY_STYLES[f.priority];
+                  const inScope = walkthroughFindingInScope(f, currentDeal.scopeItems);
+                  const selected = selectedFindings.has(i);
+                  if (inScope) {
+                    return (
+                      <div key={i} style={{ opacity: 0.72, background: "rgba(20,83,45,0.08)", border: "1px solid #14532d", borderRadius: 8, padding: 14, cursor: "default" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 4, background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid #166534" }}>Pushed</span>
+                            {f.hazmat && <span style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 3, padding: "1px 6px", fontSize: 9, color: "#f59e0b", fontWeight: 700 }}>⚠ HAZMAT</span>}
+                            <span style={{ background: p.bg, border: `1px solid ${p.border}`, borderRadius: 3, padding: "1px 6px", fontSize: 9, color: p.color, fontWeight: 700 }}>{p.label}</span>
+                            <span style={{ fontSize: 11, color: "#60a5fa" }}>{f.category}</span>
+                          </div>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: "#22c55e", fontFamily: "monospace" }}>{fmt(aiFindingEstimatedCost(f))}</span>
+                        </div>
+                        <div style={{ fontSize: 13, color: "#f1f5f9", marginBottom: 4 }}>{f.description}</div>
+                        {f.notes && <div style={{ fontSize: 11, color: "#64748b" }}>{f.notes}</div>}
+                      </div>
+                    );
+                  }
                   return (
-                    <div key={i} onClick={() => toggleFinding(i)} style={{ background: selected ? "#0d1829" : "#0a0f1a", border: `1px solid ${selected ? p.border : "#1e293b"}`, borderRadius: 8, padding: 14, cursor: "pointer" }}>
+                    <div key={i} onClick={() => toggleFindingGlobal(walkMode, i)} style={{ background: selected ? "#0d1829" : "#0a0f1a", border: `1px solid ${selected ? p.border : "#1e293b"}`, borderRadius: 8, padding: 14, cursor: "pointer" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <div style={{ width: 16, height: 16, borderRadius: 3, border: `2px solid ${selected ? "#3b82f6" : "#334155"}`, background: selected ? "#3b82f6" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff" }}>{selected ? "✓" : ""}</div>
@@ -2636,7 +3239,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                           <span style={{ background: p.bg, border: `1px solid ${p.border}`, borderRadius: 3, padding: "1px 6px", fontSize: 9, color: p.color, fontWeight: 700 }}>{p.label}</span>
                           <span style={{ fontSize: 11, color: "#60a5fa" }}>{f.category}</span>
                         </div>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: "#22c55e", fontFamily: "monospace" }}>{fmt(f.estimatedCost)}</span>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "#22c55e", fontFamily: "monospace" }}>{fmt(aiFindingEstimatedCost(f))}</span>
                       </div>
                       <div style={{ fontSize: 13, color: "#f1f5f9", marginBottom: 4 }}>{f.description}</div>
                       {f.notes && <div style={{ fontSize: 11, color: "#64748b" }}>{f.notes}</div>}
@@ -2644,6 +3247,34 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                   );
                 })}
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setModeData((prev) => {
+                    const cur = prev[walkMode];
+                    if (!cur) return prev;
+                    return { ...prev, [walkMode]: { ...cur, findings: [], transcript: "" } };
+                  });
+                  setStatus("");
+                  setSelectedByMode((pb) => ({ ...pb, [walkMode]: new Set() }));
+                  window.setTimeout(() => onWalkthroughFindingsChanged?.(), 0);
+                }}
+                style={{
+                  width: "100%",
+                  marginTop: 10,
+                  background: "transparent",
+                  border: "1px solid #1e293b",
+                  borderRadius: 8,
+                  color: "#475569",
+                  padding: isMobile ? "14px 16px" : "10px 0",
+                  minHeight: isMobile ? 44 : undefined,
+                  fontSize: isMobile ? 14 : 12,
+                  cursor: "pointer",
+                  fontFamily: "'Syne', sans-serif",
+                }}
+              >
+                Clear on-screen findings for this mode
+              </button>
             </div>
           )}
           {(walkMode === "video" || walkMode === "audiovideo") && savedFrameUrls.length > 0 && (
@@ -2682,54 +3313,6 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, isMobile =
                 ))}
               </div>
             </div>
-          )}
-        </div>
-
-        <div>
-          <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>AI Analysis Summary</div>
-          {findings.length === 0 && (
-            <div style={{ background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 8, padding: 16 }}>
-              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12, fontWeight: 700, textTransform: "uppercase" }}>How It Works</div>
-              {howItWorksByMode[walkMode].map((item, idx) => (
-                <div key={idx} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-                  <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
-                  <span style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>{item.text}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {findings.length > 0 && (
-            <>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                <MetricCard label="Total Findings" value={`${findings.length}`} sub="items identified" isMobile={isMobile} />
-                <MetricCard label="Selected Est." value={fmt(totalEstimate)} highlight isMobile={isMobile} />
-                <MetricCard label="Critical Items" value={`${findings.filter(f => f.priority === "critical").length}`} sub="need attention" isMobile={isMobile} />
-                <MetricCard label="Hazmat Flags" value={`${hazmatFindings.length}`} sub={hazmatFindings.length > 0 ? "⚠ Review required" : "None detected"} isMobile={isMobile} />
-              </div>
-              {hazmatFindings.length > 0 && (
-                <div style={{ background: "#2d2000", border: "1px solid #d97706", borderRadius: 8, padding: 14, marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700, marginBottom: 8 }}>⚠ Hazmat Findings Detected</div>
-                  {hazmatFindings.map((f, i) => <div key={i} style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>• {f.description}</div>)}
-                </div>
-              )}
-              <button type="button" onClick={handleAddToScope} disabled={selectedFindings.size === 0 || analyzing || mediaAnalyzing}
-                style={{ width: "100%", border: "none", borderRadius: 8, color: "#fff", padding: isMobile ? "16px 16px" : "14px 0", minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : 13, fontWeight: 700, cursor: selectedFindings.size === 0 || analyzing || mediaAnalyzing ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 8,
-                  background: selectedFindings.size === 0 || analyzing || mediaAnalyzing ? "#1e293b" : "linear-gradient(135deg, #16a34a, #15803d)", opacity: selectedFindings.size === 0 || analyzing || mediaAnalyzing ? 0.5 : 1 }}>
-                + Add {selectedFindings.size} Item{selectedFindings.size !== 1 ? "s" : ""} to Scope of Work
-              </button>
-              <button type="button" onClick={() => {
-                setModeData((prev) => {
-                  const cur = prev[walkMode];
-                  if (!cur) return prev;
-                  return { ...prev, [walkMode]: { ...cur, findings: [], transcript: "" } };
-                });
-                setStatus("");
-                setSelectedByMode((pb) => ({ ...pb, [walkMode]: new Set() }));
-              }}
-                style={{ width: "100%", background: "transparent", border: "1px solid #1e293b", borderRadius: 8, color: "#475569", padding: isMobile ? "14px 16px" : "10px 0", minHeight: isMobile ? 44 : undefined, fontSize: isMobile ? 14 : 12, cursor: "pointer" }}>
-                Clear & Start New Analysis
-              </button>
-            </>
           )}
         </div>
       </div>
@@ -2916,7 +3499,14 @@ function CompCard({ comp, onUpdate, onDelete, isMobile = false }: { comp: Comp; 
       </div>
       <input type="text" value={comp.address} placeholder="Address..." onChange={(e) => onUpdate({ address: e.target.value })} style={{ ...fs, marginBottom: 8, color: "#94a3b8" }} />
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
-        {[{ label: "Sale Price", val: comp.salePrice, key: "salePrice", type: "number" }, { label: "Sq Ft", val: comp.sqft, key: "sqft", type: "number" }, { label: "Bed/Bath", val: comp.bedBath, key: "bedBath", type: "text" }, { label: "DOM", val: comp.daysOnMarket, key: "daysOnMarket", type: "number" }, { label: "Sold Date", val: comp.soldDate, key: "soldDate", type: "text" }].map((f) => (
+        <div>
+          <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>Sale Price</div>
+          <div style={{ display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #1e293b", borderRadius: 4, overflow: "hidden", minHeight: isMobile ? 44 : undefined }}>
+            <span style={{ padding: isMobile ? "12px 10px" : "6px 8px", color: "#475569", fontSize: isMobile ? 14 : 12, background: "#0a0f1a", borderRight: "1px solid #1e293b" }}>$</span>
+            <CurrencyDigitsInput value={comp.salePrice} onChange={(n) => onUpdate({ salePrice: n })} isMobile={isMobile} aria-label="Comp sale price" />
+          </div>
+        </div>
+        {[{ label: "Sq Ft", val: comp.sqft, key: "sqft", type: "number" }, { label: "Bed/Bath", val: comp.bedBath, key: "bedBath", type: "text" }, { label: "DOM", val: comp.daysOnMarket, key: "daysOnMarket", type: "number" }, { label: "Sold Date", val: comp.soldDate, key: "soldDate", type: "text" }].map((f) => (
           <div key={f.key}>
             <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>{f.label}</div>
             <input type={f.type} value={f.val || ""} onChange={(e) => onUpdate({ [f.key]: f.type === "number" ? parseFloat(e.target.value) || 0 : e.target.value } as Partial<Comp>)} style={fs} />
@@ -3103,9 +3693,9 @@ function RentalPivotTab({ inputs, metrics, isMobile = false, rentalComps, setFie
     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 20 : 24 }}>
       <div>
         <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 14, textTransform: "uppercase" }}>Rental Inputs</div>
-        <InputField label="Monthly Rent" value={inputs.monthlyRent} onChange={setField("monthlyRent")} isMobile={isMobile} />
-        <InputField label="Monthly Expenses" value={inputs.monthlyExpenses} onChange={setField("monthlyExpenses")} isMobile={isMobile} />
-        <InputField label="Loan Amount (Refi)" value={inputs.loanAmount} onChange={setField("loanAmount")} isMobile={isMobile} />
+        <InputField label="Monthly Rent" value={inputs.monthlyRent} onChange={setField("monthlyRent")} isMobile={isMobile} currency />
+        <InputField label="Monthly Expenses" value={inputs.monthlyExpenses} onChange={setField("monthlyExpenses")} isMobile={isMobile} currency />
+        <InputField label="Loan Amount (Refi)" value={inputs.loanAmount} onChange={setField("loanAmount")} isMobile={isMobile} currency />
         <InputField label="Interest Rate" value={inputs.interestRate} onChange={setField("interestRate")} prefix="%" suffix="APR" isMobile={isMobile} />
         <InputField label="Loan Term" value={inputs.loanTermMonths} onChange={setField("loanTermMonths")} prefix="" suffix="mo" isMobile={isMobile} />
       </div>
@@ -3173,6 +3763,57 @@ function RentalPivotTab({ inputs, metrics, isMobile = false, rentalComps, setFie
 }
 
 // ─── Scope of Work Tab ────────────────────────────────────────────────────────
+function ScopeDescriptionTextarea({
+  value,
+  onChange,
+  isMobile = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  isMobile?: boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const minH = isMobile ? 88 : 72;
+  const adjust = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.max(minH, el.scrollHeight)}px`;
+  }, [minH]);
+  useEffect(() => {
+    adjust();
+  }, [value, adjust]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => {
+        onChange(e.target.value);
+        requestAnimationFrame(adjust);
+      }}
+      rows={3}
+      style={{
+        width: "100%",
+        minHeight: minH,
+        resize: "none",
+        overflow: "hidden",
+        background: "#060b14",
+        border: "1px solid #1e293b",
+        borderRadius: 4,
+        color: "#f1f5f9",
+        padding: isMobile ? "12px 10px" : "8px 10px",
+        fontSize: isMobile ? 15 : 13,
+        lineHeight: 1.45,
+        outline: "none",
+        boxSizing: "border-box",
+        whiteSpace: "pre-wrap",
+        overflowWrap: "anywhere",
+        wordBreak: "break-word",
+      }}
+    />
+  );
+}
+
 function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete, isMobile = false }: {
   scopeItems: ScopeItem[]; address: string;
   onAdd: () => void; onUpdate: (id: string, u: Partial<ScopeItem>) => void; onDelete: (id: string) => void; isMobile?: boolean;
@@ -3244,17 +3885,19 @@ function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete, isMobi
                     </div>
                     <button type="button" onClick={() => onDelete(item.id)} style={{ background: "#2a0a0a", border: "1px solid #dc2626", borderRadius: 6, color: "#f87171", cursor: "pointer", fontSize: 13, fontWeight: 700, padding: "8px 14px", minWidth: 44, minHeight: 44, fontFamily: "'Syne', sans-serif" }} aria-label="Remove scope item">🗑 Remove</button>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "180px 1fr", gap: 8, marginBottom: 8 }}>
-                    <div>
-                      <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>Category</div>
-                      <select value={item.category} onChange={(e) => onUpdate(item.id, { category: e.target.value })} style={{ ...fs, width: "100%", cursor: "pointer", color: "#94a3b8" }}>
-                        {SCOPE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "220px 1fr", gap: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>Category</div>
+                        <select value={item.category} onChange={(e) => onUpdate(item.id, { category: e.target.value })} style={{ ...fs, width: "100%", cursor: "pointer", color: "#94a3b8" }}>
+                          {SCOPE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>Description</div>
-                      <input type="text" value={item.description} onChange={(e) => onUpdate(item.id, { description: e.target.value })} style={{ ...fs, width: "100%", color: "#f1f5f9" }} />
-                    </div>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>Description</div>
+                    <ScopeDescriptionTextarea value={item.description} onChange={(v) => onUpdate(item.id, { description: v })} isMobile={isMobile} />
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "80px 100px 1fr 160px", gap: 8 }}>
                     <div>
@@ -3273,7 +3916,7 @@ function ScopeOfWorkTab({ scopeItems, address, onAdd, onUpdate, onDelete, isMobi
                       <div style={{ fontSize: isMobile ? 11 : 10, color: "#475569", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.08em" }}>My Estimate</div>
                       <div style={{ display: "flex", alignItems: "center", background: "#060b14", border: "1px solid #334155", borderRadius: 4, overflow: "hidden", minHeight: isMobile ? 44 : undefined }}>
                         <span style={{ padding: isMobile ? "12px 10px" : "6px 8px", color: "#334155", fontSize: isMobile ? 14 : 12, background: "#0a0f1a", borderRight: "1px solid #1e293b" }}>$</span>
-                        <input type="number" value={item.myEstimate || ""} onChange={(e) => onUpdate(item.id, { myEstimate: parseFloat(e.target.value) || 0 })} style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: "#475569", padding: isMobile ? "12px 10px" : "6px 8px", fontSize: isMobile ? 16 : 12, fontFamily: "monospace" }} />
+                        <CurrencyDigitsInput value={item.myEstimate} onChange={(n) => onUpdate(item.id, { myEstimate: n })} isMobile={isMobile} aria-label="My estimate" />
                       </div>
                     </div>
                   </div>
@@ -4084,6 +4727,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"deal" | "ai" | "comps" | "rental" | "stress" | "scope" | "packet">("deal");
   const [syncing, setSyncing] = useState(false);
   const [hasPendingWalkthroughJobs, setHasPendingWalkthroughJobs] = useState<boolean>(false);
+  const [rehabAiUndoSnapshot, setRehabAiUndoSnapshot] = useState<number | null>(null);
   const [dbLoading, setDbLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -4125,6 +4769,14 @@ export default function App() {
     }, 50);
     return () => window.clearTimeout(t);
   }, [showSettings, scrollToManageDeals]);
+
+  useEffect(() => {
+    setRehabAiUndoSnapshot(null);
+  }, [activeDealId]);
+
+  useEffect(() => {
+    if (activeTab !== "deal") setRehabAiUndoSnapshot(null);
+  }, [activeTab]);
 
   useEffect(() => {
     const checkPending = () => {
@@ -4347,10 +4999,29 @@ export default function App() {
       const { data: scopeData } = await supabase.from("scope_items").select("*").in("deal_id", dealIds);
       const { data: rentalCompsData } = await supabase.from("rental_comps").select("*").in("deal_id", dealIds);
 
+      const migrationPatches: { id: string; rehab: number }[] = [];
+
       const assembled: Deal[] = dealsData.map((d: any) => {
-        const rawRehab = d.rehab_initial_estimate != null ? Number(d.rehab_initial_estimate) : (d.rehab_cost != null ? Number(d.rehab_cost) : 0);
+        const initialRaw = d.rehab_initial_estimate;
+        const initialUnset = initialRaw == null || initialRaw === "";
+        const initialNum = initialUnset ? NaN : Number(initialRaw);
+        const initialValid = Number.isFinite(initialNum);
+        let rehabSingle = initialValid ? (initialNum as number) : 0;
+        let didMigrate = false;
+        if (initialUnset || !initialValid) {
+          const mo = d.rehab_manual_override != null ? Number(d.rehab_manual_override) : 0;
+          const rc = d.rehab_cost != null ? Number(d.rehab_cost) : 0;
+          if (Number.isFinite(mo) && mo > 0) {
+            rehabSingle = mo;
+            didMigrate = true;
+          } else if (Number.isFinite(rc) && rc > 0) {
+            rehabSingle = rc;
+            didMigrate = true;
+          }
+        }
+        if (didMigrate) migrationPatches.push({ id: d.id, rehab: rehabSingle });
+
         const rawArv = d.arv_initial_estimate != null ? Number(d.arv_initial_estimate) : (d.arv != null ? Number(d.arv) : 0);
-        const rcs = (d.rehab_cost_source as RehabCostSource) || "initial";
         const arvS = (d.arv_source as ArvSource) || "initial";
         const base: Deal = {
           id: d.id,
@@ -4364,10 +5035,8 @@ export default function App() {
           inputs: {
             propertyAddress: d.property_address || "",
             purchasePrice: d.purchase_price || 0,
-            rehabInitialEstimate: rawRehab,
-            rehabManualOverride: d.rehab_manual_override != null ? Number(d.rehab_manual_override) : 0,
-            rehabCostSource: ["initial", "ai_walkthrough", "manual"].includes(rcs) ? rcs : "initial",
-            rehabCost: d.rehab_cost != null ? Number(d.rehab_cost) : 0,
+            rehabInitialEstimate: rehabSingle,
+            rehabCost: rehabSingle,
             arvInitialEstimate: rawArv,
             arvSource: ["initial", "comp_derived"].includes(arvS) ? arvS : "initial",
             arv: d.arv != null ? Number(d.arv) : 0,
@@ -4409,6 +5078,23 @@ export default function App() {
       });
 
       setDeals(assembled);
+      if (migrationPatches.length > 0 && user) {
+        void (async () => {
+          for (const p of migrationPatches) {
+            const { error: migErr } = await supabase
+              .from("deals")
+              .update({
+                rehab_initial_estimate: p.rehab,
+                rehab_cost: p.rehab,
+                rehab_manual_override: 0,
+                rehab_cost_source: "initial",
+              })
+              .eq("id", p.id)
+              .eq("user_id", user.id);
+            if (migErr) console.error("[loadDeals] rehab migration update failed:", migErr);
+          }
+        })();
+      }
       const nextActive = pickActiveDealIdOnLoad(assembled);
       if (nextActive) setActiveDealId(nextActive);
       const onboardingKey = `fliplogic_onboarding_seen_${user.id}`;
@@ -4478,8 +5164,8 @@ export default function App() {
         property_address: deal.inputs.propertyAddress,
         purchase_price: deal.inputs.purchasePrice,
         rehab_initial_estimate: deal.inputs.rehabInitialEstimate,
-        rehab_manual_override: deal.inputs.rehabManualOverride,
-        rehab_cost_source: deal.inputs.rehabCostSource,
+        rehab_manual_override: 0,
+        rehab_cost_source: "initial",
         rehab_cost: deal.inputs.rehabCost,
         arv_initial_estimate: deal.inputs.arvInitialEstimate,
         arv_source: deal.inputs.arvSource,
@@ -4697,18 +5383,8 @@ export default function App() {
 
   const handleAddAIToScope = (items: ScopeItem[]) => {
     if (!activeDeal) return;
-    const wasEmpty = activeDeal.scopeItems.length === 0;
     const nextScope = [...activeDeal.scopeItems, ...items];
-    if (wasEmpty && items.length > 0 && activeDeal.inputs.rehabCostSource === "initial") {
-      updateDeal({
-        scopeItems: nextScope,
-        inputs: { ...activeDeal.inputs, rehabCostSource: "ai_walkthrough" },
-      });
-      const sum = calculateAIWalkthroughRehab(nextScope);
-      setActivityToast({ text: `AI scope detected. Using ${fmt(sum)} for rehab calculations. Change anytime on Deal Analysis.`, ms: 6000 });
-    } else {
-      updateDeal({ scopeItems: nextScope });
-    }
+    updateDeal({ scopeItems: nextScope });
     setActiveTab("scope");
   };
 
@@ -4804,7 +5480,11 @@ export default function App() {
         <>
         {/* Address */}
         <div style={{ padding: isMobile ? "12px 14px" : "10px 24px", background: "#0a0f1a", borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
-          <input type="text" value={inputs.propertyAddress} onChange={(e) => set("propertyAddress")(e.target.value)} placeholder="Enter property address..."
+          <label style={{ display: "block", fontSize: isMobile ? 11 : 10, color: "#64748b", marginBottom: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            Property Address
+            <ReqStar />
+          </label>
+          <input type="text" value={inputs.propertyAddress} onChange={(e) => set("propertyAddress")(e.target.value)} placeholder="Enter street, city, state…"
             style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: "#94a3b8", fontSize: isMobile ? 15 : 13, fontFamily: "monospace", boxSizing: "border-box", minHeight: isMobile ? 44 : undefined, padding: isMobile ? "4px 0" : 0 }} />
         </div>
         {activityToast && (
@@ -4847,81 +5527,139 @@ export default function App() {
         <div style={{ padding: isMobile ? "16px 14px 24px" : "20px 24px", flex: 1, overflow: "auto" }}>
 
           {activeTab === "deal" && (() => {
-            const aiRehab = calculateAIWalkthroughRehab(activeDeal.scopeItems);
             const { weightedArv: compArvW } = calculateCompARV(activeDeal.comps, activeDeal.subjectSqft);
             const nComps = activeDeal.comps.filter((c) => c.salePrice > 0 && c.sqft > 0).length;
-            const activeRe = calculateActiveRehab(inputs, activeDeal.scopeItems);
+            const activeRe = inputs.rehabCost;
             const activeAr = calculateActiveARV(inputs, activeDeal.comps, activeDeal.subjectSqft);
-            const rehabBySource: Record<RehabCostSource, number> = {
-              initial: inputs.rehabInitialEstimate,
-              ai_walkthrough: aiRehab,
-              manual: inputs.rehabManualOverride,
-            };
-            const selectedRehabVal = rehabBySource[inputs.rehabCostSource];
             const arvBySource: Record<ArvSource, number> = { initial: inputs.arvInitialEstimate, comp_derived: compArvW };
             const selectedArvVal = arvBySource[inputs.arvSource];
             const mao = calculateMAO(activeAr, activeRe, inputs.maoPercent);
+            const scopeItemsTotalForSuggestion = activeDeal.scopeItems.reduce((s, it) => s + scopeItemEstimateNum(it), 0);
+            const scopeItemsCountForSuggestion = activeDeal.scopeItems.length;
+            const showSowTotalSuggestionRow = scopeItemsCountForSuggestion > 0;
             const sectionBox: CSSProperties = { background: "#0a0f1a", border: "1px solid #1e293b", borderRadius: 12, padding: isMobile ? 16 : 20, marginBottom: 20 };
             const sectionHeader: CSSProperties = { display: "flex", alignItems: "center", gap: 10, fontSize: isMobile ? 15 : 17, color: "#3b82f6", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16, fontWeight: 700, fontFamily: "'Syne', sans-serif" };
             const purchase = inputs.purchasePrice;
             return (
+            <>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 20 : 24 }}>
               <div>
                 <div ref={propertySpecsRef} style={sectionBox}>
                   <div style={sectionHeader}><span aria-hidden>🏠</span> Property Specs</div>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
-                    <div>
-                      <label style={{ display: "block", fontSize: 10, color: "#64748b", marginBottom: 4, textTransform: "uppercase" }}>Bedrooms</label>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: isMobile ? "1fr" : "minmax(72px, 90px) minmax(72px, 90px) minmax(0, 1fr)",
+                      gap: 10,
+                      alignItems: "start",
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <label style={{ display: "block", fontSize: 10, color: "#64748b", marginBottom: 4, textTransform: "uppercase" }}>
+                        Bedrooms
+                        <ReqStar />
+                      </label>
                       <input type="number" min={0} value={activeDeal.subjectBedrooms || ""} onChange={(e) => updateDeal({ subjectBedrooms: Math.max(0, parseInt(e.target.value) || 0) })}
-                        style={{ width: "100%", minHeight: isMobile ? 44 : 36, background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: isMobile ? "12px" : "8px", fontFamily: "monospace" }} />
+                        style={{ width: "100%", maxWidth: isMobile ? undefined : 90, boxSizing: "border-box", minHeight: isMobile ? 44 : 36, background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: isMobile ? "12px" : "8px", fontFamily: "'JetBrains Mono', monospace", fontSize: isMobile ? 16 : 14 }} />
                     </div>
-                    <div>
-                      <label style={{ display: "block", fontSize: 10, color: "#64748b", marginBottom: 4, textTransform: "uppercase" }}>Bathrooms</label>
+                    <div style={{ minWidth: 0 }}>
+                      <label style={{ display: "block", fontSize: 10, color: "#64748b", marginBottom: 4, textTransform: "uppercase" }}>
+                        Bathrooms
+                        <ReqStar />
+                      </label>
                       <input type="number" min={0} step={0.5} value={activeDeal.subjectBathrooms || ""} onChange={(e) => updateDeal({ subjectBathrooms: Math.max(0, parseFloat(e.target.value) || 0) })}
-                        style={{ width: "100%", minHeight: isMobile ? 44 : 36, background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: isMobile ? "12px" : "8px", fontFamily: "monospace" }} />
+                        style={{ width: "100%", maxWidth: isMobile ? undefined : 90, boxSizing: "border-box", minHeight: isMobile ? 44 : 36, background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: isMobile ? "12px" : "8px", fontFamily: "'JetBrains Mono', monospace", fontSize: isMobile ? 16 : 14 }} />
                     </div>
-                    <div>
-                      <label style={{ display: "block", fontSize: 10, color: "#64748b", marginBottom: 4, textTransform: "uppercase" }}>Square Footage</label>
+                    <div style={{ minWidth: 0 }}>
+                      <label style={{ display: "block", fontSize: 10, color: "#64748b", marginBottom: 4, textTransform: "uppercase" }}>
+                        Square Footage
+                        <ReqStar />
+                      </label>
                       <input type="number" min={0} value={activeDeal.subjectSqft || ""} onChange={(e) => updateDeal({ subjectSqft: Math.max(0, parseFloat(e.target.value) || 0) })}
-                        style={{ width: "100%", minHeight: isMobile ? 44 : 36, background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: isMobile ? "12px" : "8px", fontFamily: "monospace" }} />
+                        style={{ width: "100%", minHeight: isMobile ? 44 : 36, background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, color: "#f1f5f9", padding: isMobile ? "12px" : "8px", fontFamily: "'JetBrains Mono', monospace", fontSize: isMobile ? 16 : 14 }} />
                     </div>
                   </div>
                 </div>
 
                 <div style={sectionBox}>
                   <div style={sectionHeader}><span aria-hidden>💰</span> Acquisition</div>
-                  <InputField label="Purchase Price" value={inputs.purchasePrice} onChange={set("purchasePrice")} isMobile={isMobile} />
-                  <InputField label="Closing Costs (Buy)" value={inputs.closingCostsBuy} onChange={set("closingCostsBuy")} isMobile={isMobile} />
+                  <InputField label="Purchase Price" value={inputs.purchasePrice} onChange={set("purchasePrice")} isMobile={isMobile} currency requiredMark />
+                  <InputField label="Closing Costs (Buy)" value={inputs.closingCostsBuy} onChange={set("closingCostsBuy")} isMobile={isMobile} currency />
                 </div>
 
                 <div style={sectionBox}>
-                  <div style={sectionHeader}><span aria-hidden>🔨</span> Rehab Cost Breakdown</div>
-                  {([["initial", "Initial Estimate"], ["ai_walkthrough", "AI Walkthrough"], ["manual", "Manual Override"]] as const).map(([k, label]) => (
-                    <div key={k} style={{ display: "grid", gridTemplateColumns: isMobile ? "32px 1fr" : "32px 1fr 200px", gap: 8, alignItems: "center", marginBottom: 10, padding: "8px 0", borderBottom: "1px solid #0f172a" }}>
-                      <input type="radio" name="rehabSource" checked={inputs.rehabCostSource === k} onChange={() => void updateInputs({ rehabCostSource: k })}
-                        style={{ width: 18, height: 18, accentColor: "#3b82f6" }} />
-                      <div style={{ fontSize: 13, color: "#e2e8f0" }}>{label}</div>
-                      {k === "initial" && (
-                        <div style={{ gridColumn: isMobile ? "1 / -1" : undefined, marginTop: isMobile ? 4 : 0, marginLeft: isMobile ? 32 : 0 }}>
-                          <InputField label="" value={inputs.rehabInitialEstimate} onChange={(v) => updateInputs({ rehabInitialEstimate: v })} prefix="$" isMobile={isMobile} hideLabel />
-                        </div>
-                      )}
-                      {k === "ai_walkthrough" && (
-                        <div style={{ fontSize: 13, color: activeDeal.scopeItems.length > 0 ? "#94a3b8" : "#64748b", gridColumn: isMobile ? "1 / -1" : 3, textAlign: isMobile ? "left" : "right" }}>
-                          {activeDeal.scopeItems.length > 0
-                            ? `${fmt(aiRehab)} (${activeDeal.scopeItems.length} scope items)`
-                            : "$0 — add scope items to enable"}
-                        </div>
-                      )}
-                      {k === "manual" && (
-                        <div style={{ gridColumn: isMobile ? "1 / -1" : undefined, marginTop: isMobile ? 4 : 0, marginLeft: isMobile ? 32 : 0 }}>
-                          <InputField label="" value={inputs.rehabManualOverride} onChange={(v) => updateInputs({ rehabManualOverride: v })} prefix="$" isMobile={isMobile} hideLabel />
-                        </div>
-                      )}
+                  <div style={sectionHeader}><span aria-hidden>🔨</span> Rehab Cost</div>
+                  <EstimatedRehabCostField
+                    value={inputs.rehabInitialEstimate}
+                    onChange={(n) => {
+                      setRehabAiUndoSnapshot(null);
+                      void updateInputs({ rehabInitialEstimate: n });
+                    }}
+                    isMobile={isMobile}
+                  />
+                  <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.55, marginTop: -4, marginBottom: 12 }}>
+                    Your rehab budget. This number drives MAO, ROI, and profit calculations. Build and refine your Scope of Work on the Scope tab — you can apply that total here when you are ready.
+                  </div>
+                  {showSowTotalSuggestionRow && (
+                    <div style={{ marginTop: 4, display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "flex-start", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ flex: 1, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+                        Scope of Work total: <span style={{ color: "#e2e8f0", fontWeight: 700 }}>{fmt(scopeItemsTotalForSuggestion)}</span>
+                        {" "}across {scopeItemsCountForSuggestion} item{scopeItemsCountForSuggestion === 1 ? "" : "s"}.
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRehabAiUndoSnapshot(inputs.rehabInitialEstimate);
+                          void updateInputs({ rehabInitialEstimate: Math.round(scopeItemsTotalForSuggestion) });
+                        }}
+                        style={{
+                          flexShrink: 0,
+                          minHeight: 40,
+                          padding: "0 16px",
+                          borderRadius: 8,
+                          border: "none",
+                          fontWeight: 700,
+                          fontSize: 13,
+                          fontFamily: "'Syne', sans-serif",
+                          cursor: "pointer",
+                          background: "linear-gradient(135deg, #1d4ed8, #1e40af)",
+                          color: "#fff",
+                          width: isMobile ? "100%" : "auto",
+                        }}
+                      >
+                        Use this number
+                      </button>
                     </div>
-                  ))}
-                  <div style={{ fontSize: 16, fontWeight: 800, color: "#f1f5f9", marginTop: 12, marginBottom: 6 }}>Active Rehab Cost: {fmt(activeRe)}</div>
-                  {selectedRehabVal === 0 && <div style={{ fontSize: 12, color: "#f59e0b" }}>⚠ Selected source has $0 value.</div>}
+                  )}
+                  {rehabAiUndoSnapshot != null && (
+                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>
+                      Replaced with Scope of Work total.{" "}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const v = rehabAiUndoSnapshot;
+                          setRehabAiUndoSnapshot(null);
+                          void updateInputs({ rehabInitialEstimate: v });
+                        }}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#60a5fa",
+                          cursor: "pointer",
+                          textDecoration: "underline",
+                          padding: 0,
+                          fontSize: 12,
+                          fontFamily: "'Syne', sans-serif",
+                        }}
+                      >
+                        Undo
+                      </button>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#cbd5e1", marginTop: 14 }}>Used in calculations: {fmt(activeRe)}</div>
+                  {inputs.rehabInitialEstimate === 0 && (
+                    <div style={{ fontSize: 12, color: "#f59e0b", marginTop: 6 }}>⚠ Enter a rehab budget for accurate MAO and profit figures.</div>
+                  )}
                 </div>
 
                 <div style={sectionBox}>
@@ -4929,10 +5667,13 @@ export default function App() {
                   {([["initial", "Initial Estimate"], ["comp_derived", "Comp-Derived"]] as const).map(([k, label]) => (
                     <div key={k} style={{ display: "grid", gridTemplateColumns: isMobile ? "32px 1fr" : "32px 1fr 200px", gap: 8, alignItems: "center", marginBottom: 10, padding: "8px 0", borderBottom: "1px solid #0f172a" }}>
                       <input type="radio" name="arvSource" checked={inputs.arvSource === k} onChange={() => void updateInputs({ arvSource: k })} style={{ width: 18, height: 18, accentColor: "#3b82f6" }} />
-                      <div style={{ fontSize: 13, color: "#e2e8f0" }}>{label}</div>
+                      <div style={{ fontSize: 13, color: "#e2e8f0", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 4 }}>
+                        {label}
+                        {k === "initial" && inputs.arvSource === "initial" ? <ReqStar /> : null}
+                      </div>
                       {k === "initial" && (
                         <div style={{ gridColumn: isMobile ? "1 / -1" : undefined, marginTop: isMobile ? 4 : 0, marginLeft: isMobile ? 32 : 0 }}>
-                          <InputField label="" value={inputs.arvInitialEstimate} onChange={(v) => updateInputs({ arvInitialEstimate: v })} prefix="$" isMobile={isMobile} hideLabel />
+                          <InputField label="" value={inputs.arvInitialEstimate} onChange={(v) => updateInputs({ arvInitialEstimate: v })} prefix="$" isMobile={isMobile} hideLabel currency />
                         </div>
                       )}
                       {k === "comp_derived" && (
@@ -4969,11 +5710,11 @@ export default function App() {
 
                 <div style={sectionBox}>
                   <div style={sectionHeader}><span aria-hidden>🏦</span> Financing</div>
-                  <InputField label="Loan Amount" value={inputs.loanAmount} onChange={set("loanAmount")} isMobile={isMobile} />
+                  <InputField label="Loan Amount" value={inputs.loanAmount} onChange={set("loanAmount")} isMobile={isMobile} currency />
                   <InputField label="Interest Rate" value={inputs.interestRate} onChange={set("interestRate")} prefix="%" suffix="APR" isMobile={isMobile} />
                   <InputField label="Loan Term" value={inputs.loanTermMonths} onChange={set("loanTermMonths")} prefix="" suffix="mo" isMobile={isMobile} />
                   <InputField label="Projected Hold Time" value={inputs.holdingMonths} onChange={set("holdingMonths")} prefix="" suffix="mo" isMobile={isMobile} />
-                  <InputField label="Closing Costs (Sell)" value={inputs.closingCostsSell} onChange={set("closingCostsSell")} isMobile={isMobile} />
+                  <InputField label="Closing Costs (Sell)" value={inputs.closingCostsSell} onChange={set("closingCostsSell")} isMobile={isMobile} currency />
                 </div>
 
                 <div style={sectionBox}>
@@ -5009,6 +5750,30 @@ export default function App() {
                 </div>
               </div>
             </div>
+            <div style={{ marginTop: isMobile ? 20 : 16, display: "flex", justifyContent: isMobile ? "stretch" : "flex-end", width: "100%" }}>
+              <button
+                type="button"
+                onClick={() => setActiveTab("ai")}
+                style={{
+                  width: isMobile ? "100%" : "auto",
+                  minWidth: isMobile ? undefined : 280,
+                  minHeight: 48,
+                  padding: isMobile ? "14px 20px" : "12px 28px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: "linear-gradient(135deg, #1d4ed8, #1e40af)",
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: isMobile ? 14 : 13,
+                  fontFamily: "'Syne', sans-serif",
+                  cursor: "pointer",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                Next: AI Walkthrough →
+              </button>
+            </div>
+            </>
             );
           })()}
 
@@ -5017,6 +5782,7 @@ export default function App() {
               address={inputs.propertyAddress}
               onUpdateYearBuilt={(y) => updateDeal({ yearBuilt: y })}
               onAddToScope={handleAddAIToScope}
+              sowTotalFromScope={activeDeal.scopeItems.reduce((s, i) => s + scopeItemEstimateNum(i), 0)}
               isMobile={isMobile}
               dealId={activeDeal.id}
               userId={user.id}
