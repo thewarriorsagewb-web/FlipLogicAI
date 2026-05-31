@@ -271,7 +271,9 @@ function calculateActiveRehab(inputs: DealInputs): number {
 
 function calculateActiveARV(inputs: DealInputs, comps: Comp[], subjectSqft: number): number {
   if (inputs.arvSource === "comp_derived") {
-    return calculateCompARV(comps, subjectSqft).weightedArv;
+    const compDerived = calculateCompARV(comps, subjectSqft).weightedArv;
+    if (compDerived > 0) return compDerived;
+    return inputs.arvInitialEstimate;
   }
   return inputs.arvInitialEstimate;
 }
@@ -5720,7 +5722,10 @@ export default function App() {
                     </div>
                   ))}
                   <div style={{ fontSize: 16, fontWeight: 800, color: "#f1f5f9", marginTop: 12, marginBottom: 6 }}>Active ARV: {fmt(activeAr)}</div>
-                  {selectedArvVal === 0 && <div style={{ fontSize: 12, color: "#f59e0b" }}>⚠ Selected source has $0 value.</div>}
+                  {inputs.arvSource === "comp_derived" && nComps === 0 && inputs.arvInitialEstimate > 0 ? (
+                    <div style={{ fontSize: 12, color: "#f59e0b", marginBottom: 6 }}>No comps yet — using your initial estimate ({fmt(inputs.arvInitialEstimate)}).</div>
+                  ) : null}
+                  {activeAr === 0 && <div style={{ fontSize: 12, color: "#f59e0b" }}>⚠ Selected source has $0 value.</div>}
                 </div>
 
                 <div style={sectionBox}>
