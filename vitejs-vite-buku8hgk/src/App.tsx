@@ -84,6 +84,9 @@ interface Deal {
   inputs: DealInputs; comps: Comp[]; subjectSqft: number;
   subjectBedrooms: number;
   subjectBathrooms: number;
+  compsSnapshotSqft: number | null;
+  compsSnapshotBedrooms: number | null;
+  compsSnapshotBathrooms: number | null;
   /** Construction year (AI walkthrough); null = not set — do not default (avoids false lead-paint heuristics) */
   yearBuilt: number | null;
   lenderInfo: LenderInfo; scopeItems: ScopeItem[];
@@ -5155,6 +5158,9 @@ export default function App() {
           subjectSqft: d.subject_sqft || 0,
           subjectBedrooms: d.subject_bedrooms != null ? Number(d.subject_bedrooms) : 0,
           subjectBathrooms: d.subject_bathrooms != null ? Number(d.subject_bathrooms) : 0,
+          compsSnapshotSqft: d.comps_snapshot_sqft != null ? Number(d.comps_snapshot_sqft) : null,
+          compsSnapshotBedrooms: d.comps_snapshot_bedrooms != null ? Number(d.comps_snapshot_bedrooms) : null,
+          compsSnapshotBathrooms: d.comps_snapshot_bathrooms != null ? Number(d.comps_snapshot_bathrooms) : null,
           yearBuilt: d.year_built != null && d.year_built !== "" && !Number.isNaN(Number(d.year_built)) ? Math.floor(Number(d.year_built)) : null,
           lenderInfo: d.lender_info || BLANK_LENDER_INFO,
           inputs: {
@@ -5310,6 +5316,9 @@ export default function App() {
         subject_sqft: deal.subjectSqft,
         subject_bedrooms: deal.subjectBedrooms,
         subject_bathrooms: deal.subjectBathrooms,
+        comps_snapshot_sqft: deal.compsSnapshotSqft,
+        comps_snapshot_bedrooms: deal.compsSnapshotBedrooms,
+        comps_snapshot_bathrooms: deal.compsSnapshotBathrooms,
         year_built: deal.yearBuilt,
         lender_info: deal.lenderInfo,
       });
@@ -5449,7 +5458,9 @@ export default function App() {
     const nd: Deal = applySyncedRehabArv({
       id: data.id, createdAt: data.created_at, updatedAt: data.updated_at,
       inputs: { ...BLANK_INPUTS },
-      comps: [], subjectSqft: 0, subjectBedrooms: 0, subjectBathrooms: 0, yearBuilt: null,
+      comps: [], subjectSqft: 0, subjectBedrooms: 0, subjectBathrooms: 0,
+      compsSnapshotSqft: null, compsSnapshotBedrooms: null, compsSnapshotBathrooms: null,
+      yearBuilt: null,
       lenderInfo: { ...BLANK_LENDER_INFO }, scopeItems: [], rentalComps: [], aiAnalysisUsed: false,
       aiLocked: aiLocked || undefined,
     });
@@ -5975,6 +5986,9 @@ export default function App() {
                   inputs: nextInputs,
                   comps: updatedComps,
                   updatedAt: new Date().toISOString(),
+                  compsSnapshotSqft: activeDeal.subjectSqft,
+                  compsSnapshotBedrooms: activeDeal.subjectBedrooms,
+                  compsSnapshotBathrooms: activeDeal.subjectBathrooms,
                   ...(replace ? { rentalComps: rentalCompsWithIds } : {}),
                 };
                 merged = applySyncedRehabArv(merged);
@@ -5986,6 +6000,16 @@ export default function App() {
                 if (saveTimer.current) clearTimeout(saveTimer.current);
                 saveTimer.current = setTimeout(() => saveDeal(merged), 1500);
                 try {
+                  const { error: snapErr } = await supabase
+                    .from("deals")
+                    .update({
+                      comps_snapshot_sqft: activeDeal.subjectSqft,
+                      comps_snapshot_bedrooms: activeDeal.subjectBedrooms,
+                      comps_snapshot_bathrooms: activeDeal.subjectBathrooms,
+                    })
+                    .eq("id", activeDeal.id)
+                    .eq("user_id", user.id);
+                  if (snapErr) console.error("Comps snapshot update error:", snapErr);
                   if (compsWithIds.length > 0) {
                     const { error: compsError } = await supabase.from("comps").insert(
                       compsWithIds.map((c) => ({
