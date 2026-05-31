@@ -3529,7 +3529,7 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
   comps: Comp[]; subjectSqft: number; enteredArv: number;
   onAddComp: () => void; onUpdateComp: (id: string, u: Partial<Comp>) => void;
   onDeleteComp: (id: string) => void; onUpdateSubjectSqft: (v: number) => void; onApplyArv: (v: number) => void;
-  onRentCastSuccess: (newComps: Omit<Comp, "id">[], rentEstimate: number, rentalComps: Omit<RentalComp, "id">[]) => void | Promise<void>;
+  onRentCastSuccess: (newComps: Omit<Comp, "id">[], rentEstimate: number, rentalComps: Omit<RentalComp, "id">[], options?: { replace?: boolean }) => void | Promise<void>;
   supabase: SupabaseClient;
   dealId: string;
   propertyAddress: string;
@@ -3540,6 +3540,7 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
   triggerAIUse: (dealId: string) => Promise<void>;
 }) {
   const [pullingComps, setPullingComps] = useState(false);
+  const [refreshingComps, setRefreshingComps] = useState(false);
   const [pullError, setPullError] = useState("");
   const [pullSuccess, setPullSuccess] = useState("");
 
@@ -3592,6 +3593,58 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
     }
   };
 
+  const refreshCompsFromRentCast = async () => {
+    if (!window.confirm("Refresh comps? This replaces ALL current comps for this deal — including any you added manually — with a fresh pull from RentCast, and uses one RentCast pull.")) {
+      return;
+    }
+    if (!canUseAI(activeDeal)) {
+      onNeedPaywall("Auto-pull comps isn't available on this deal. Upgrade to Investor to unlock it, or add comps manually.");
+      return;
+    }
+    if (!propertyAddress.trim()) {
+      setPullError("Enter a property address in the Deal Analysis tab first");
+      return;
+    }
+    setRefreshingComps(true);
+    setPullError("");
+    setPullSuccess("");
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke("rentcast-comps", {
+        body: { address: propertyAddress.trim() },
+      });
+      if (fnErr) {
+        const detail = (fnErr as unknown as { context?: { json?: () => Promise<unknown> } }).context?.json
+          ? JSON.stringify(await (fnErr as unknown as { context: { json: () => Promise<unknown> } }).context.json())
+          : fnErr.message || String(fnErr);
+        throw new Error(detail);
+      }
+      const payload = data as {
+        success?: boolean;
+        error?: string;
+        saleComps?: Omit<Comp, "id">[];
+        rentEstimate?: number;
+        rentalComps?: Omit<RentalComp, "id">[];
+      };
+      if (payload.success === false && payload.error) throw new Error(payload.error);
+      const saleList = payload.saleComps || [];
+      const rentEst = typeof payload.rentEstimate === "number" ? payload.rentEstimate : 0;
+      const rentalCompsList = payload.rentalComps || [];
+      const hasValidSaleComp = saleList.some((c) => c.salePrice > 0);
+      if (!hasValidSaleComp) {
+        setPullError("Couldn't pull fresh comps — your existing comps are unchanged.");
+        return;
+      }
+      const toReplace = saleList.slice(0, 6);
+      await onRentCastSuccess(toReplace, rentEst, rentalCompsList, { replace: true });
+      setPullSuccess("Refreshed comps from RentCast");
+      await triggerAIUse(activeDeal.id);
+    } catch (e: unknown) {
+      setPullError(e instanceof Error ? e.message : "Couldn't pull fresh comps — your existing comps are unchanged.");
+    } finally {
+      setRefreshingComps(false);
+    }
+  };
+
   const { weightedArv, avgPpsf, strongAvg, allAvg } = calculateCompARV(comps, subjectSqft);
   const validComps = comps.filter((c) => c.salePrice > 0);
   const arvDiff = enteredArv > 0 && weightedArv > 0 ? ((enteredArv - weightedArv) / weightedArv) * 100 : null;
@@ -3628,6 +3681,30 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
             }}
           >
             {pullingComps ? "Pulling comps..." : comps.length >= 3 ? "✓ Comps Already Pulled" : "🔄 Auto-Pull Comps from RentCast"}
+          </button>
+        )}
+        {comps.length > 0 && (
+          <button
+            type="button"
+            onClick={() => void refreshCompsFromRentCast()}
+            disabled={refreshingComps || pullingComps || !propertyAddress.trim()}
+            style={{
+              width: isMobile ? "100%" : "auto",
+              marginTop: 10,
+              background: refreshingComps || pullingComps || !propertyAddress.trim() ? "#1e293b" : "transparent",
+              border: "1px solid #334155",
+              borderRadius: 8,
+              color: refreshingComps || pullingComps || !propertyAddress.trim() ? "#64748b" : "#94a3b8",
+              padding: isMobile ? "14px 16px" : "10px 18px",
+              minHeight: isMobile ? 48 : 44,
+              fontSize: isMobile ? 14 : 13,
+              fontWeight: 600,
+              cursor: refreshingComps || pullingComps || !propertyAddress.trim() ? "not-allowed" : "pointer",
+              fontFamily: "'Syne', sans-serif",
+              opacity: refreshingComps || pullingComps || !propertyAddress.trim() ? 0.6 : 1,
+            }}
+          >
+            {refreshingComps ? "Refreshing..." : "🔄 Refresh Comps from RentCast"}
           </button>
         )}
         {pullError && <div style={{ color: "#f87171", fontSize: 13, marginTop: 10 }}>{pullError}</div>}
@@ -5871,26 +5948,37 @@ export default function App() {
               }}
               onUpdateSubjectSqft={() => {}}
               onApplyArv={(_weightedArv) => { void _weightedArv; updateInputs({ arvSource: "comp_derived" }); setActiveTab("deal"); }}
-              onRentCastSuccess={async (newComps, rentEstimate, rentalComps) => {
+              onRentCastSuccess={async (newComps, rentEstimate, rentalComps, options) => {
                 if (!activeDeal || !user) return;
+                const replace = options?.replace === true;
                 const compsWereEmpty = activeDeal.comps.length === 0;
                 const arvWasInitial = activeDeal.inputs.arvSource === "initial";
                 const compsWithIds: Comp[] = newComps.map((c) => ({ ...c, id: uid() }));
-                const updatedComps = [...activeDeal.comps, ...compsWithIds];
+                const updatedComps = replace ? compsWithIds : [...activeDeal.comps, ...compsWithIds];
+                const rentalCompsWithIds: RentalComp[] = replace
+                  ? (rentalComps || []).map((r) => ({ ...r, id: uid() }))
+                  : [];
                 let nextInputs: DealInputs = { ...activeDeal.inputs };
                 if (rentEstimate > 0) nextInputs = { ...nextInputs, monthlyRent: rentEstimate };
-                if (compsWereEmpty && updatedComps.length > 0 && arvWasInitial) {
+                if (!replace && compsWereEmpty && updatedComps.length > 0 && arvWasInitial) {
                   nextInputs = { ...nextInputs, arvSource: "comp_derived" };
+                }
+                if (replace) {
+                  const { error: delCompsErr } = await supabase.from("comps").delete().eq("deal_id", activeDeal.id).eq("user_id", user.id);
+                  if (delCompsErr) console.error("Comps delete error:", delCompsErr);
+                  const { error: delRentalErr } = await supabase.from("rental_comps").delete().eq("deal_id", activeDeal.id).eq("user_id", user.id);
+                  if (delRentalErr) console.error("Rental comps delete error:", delRentalErr);
                 }
                 let merged: Deal = {
                   ...activeDeal,
                   inputs: nextInputs,
                   comps: updatedComps,
                   updatedAt: new Date().toISOString(),
+                  ...(replace ? { rentalComps: rentalCompsWithIds } : {}),
                 };
                 merged = applySyncedRehabArv(merged);
                 setDeals((prev) => prev.map((d) => d.id === activeDeal.id ? merged : d));
-                if (compsWereEmpty && updatedComps.length > 0 && arvWasInitial) {
+                if (!replace && compsWereEmpty && updatedComps.length > 0 && arvWasInitial) {
                   const w = calculateCompARV(updatedComps, activeDeal.subjectSqft).weightedArv;
                   setActivityToast({ text: `Comps imported. Using ${fmt(w)} comp-derived ARV. Change anytime on Deal Analysis.`, ms: 6000 });
                 }
@@ -5923,10 +6011,25 @@ export default function App() {
                       .eq("user_id", user.id);
                     if (rentError) console.error("Rent update error:", rentError);
                   }
-                  if (rentalComps && rentalComps.length > 0) {
-                    const rentalCompsWithIds = rentalComps.map(r => ({ ...r, id: uid() }));
+                  if (replace) {
+                    if (rentalCompsWithIds.length > 0) {
+                      const { error: rentalError } = await supabase.from("rental_comps").insert(
+                        rentalCompsWithIds.map((r) => ({
+                          id: r.id,
+                          deal_id: activeDeal.id,
+                          user_id: user.id,
+                          address: r.address,
+                          monthly_rent: r.monthlyRent,
+                          bed_bath: r.bedBath,
+                          distance: r.distance,
+                        }))
+                      );
+                      if (rentalError) console.error("Rental comps insert error:", rentalError);
+                    }
+                  } else if (rentalComps && rentalComps.length > 0) {
+                    const appendRentalCompsWithIds = rentalComps.map(r => ({ ...r, id: uid() }));
                     const { error: rentalError } = await supabase.from("rental_comps").insert(
-                      rentalCompsWithIds.map(r => ({
+                      appendRentalCompsWithIds.map(r => ({
                         id: r.id,
                         deal_id: activeDeal.id,
                         user_id: user.id,
@@ -5937,7 +6040,7 @@ export default function App() {
                       }))
                     );
                     if (rentalError) console.error("Rental comps insert error:", rentalError);
-                    const withRental = applySyncedRehabArv({ ...merged, rentalComps: rentalCompsWithIds });
+                    const withRental = applySyncedRehabArv({ ...merged, rentalComps: appendRentalCompsWithIds });
                     setDeals(prev => prev.map(d => d.id === activeDeal.id ? withRental : d));
                     if (saveTimer.current) clearTimeout(saveTimer.current);
                     saveTimer.current = setTimeout(() => saveDeal(withRental), 1500);
