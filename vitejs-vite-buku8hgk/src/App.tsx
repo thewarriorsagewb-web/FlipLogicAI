@@ -4066,10 +4066,11 @@ function LenderPacketTab({ deal, metrics, lenderInfo, onUpdateLenderInfo, isMobi
 }
 
 // ─── Deals Sidebar ────────────────────────────────────────────────────────────
-function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, onOpenHelp, syncing, hasPendingWalkthroughJobs, upgradePanel, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
+function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, onOpenHelp, syncing, hasPendingWalkthroughJobs, upgradePanel, showInactive, onToggleShowInactive, variant = "sidebar", drawerOpen = false, onCloseDrawer }: {
   deals: Deal[]; activeDealId: string; onSelect: (id: string) => void; onNew: () => boolean | Promise<boolean>;
   onOpenSettings: () => void; onOpenHelp: () => void; syncing: boolean; hasPendingWalkthroughJobs: boolean;
   upgradePanel?: ReactNode;
+  showInactive: boolean; onToggleShowInactive: () => void;
   variant?: "sidebar" | "drawer"; drawerOpen?: boolean; onCloseDrawer?: () => void;
 }) {
   const isDrawer = variant === "drawer";
@@ -4088,6 +4089,13 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, on
     onSelect(id);
     if (isDrawer) onCloseDrawer?.();
   };
+
+  const isInactive = (deal: Deal) => deal.inputs.dealStatus === "closed" || deal.inputs.dealStatus === "passed";
+  const displayedDeals = showInactive
+    ? deals
+    : deals.filter((d) => !isInactive(d) || d.id === activeDealId);
+  const hasInactiveDeals = deals.some(isInactive);
+  const hiddenInactiveCount = deals.filter((d) => isInactive(d) && d.id !== activeDealId).length;
 
   return (
     <div style={shell}>
@@ -4135,8 +4143,8 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, on
         </div>
       </div>
       <div style={{ padding: isDrawer ? "12px 14px 10px" : "16px 14px 10px", borderBottom: "1px solid #1e293b", flexShrink: 0 }}>
-        {!isDrawer && <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>({deals.length})</div>}
-        {isDrawer && <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>({deals.length})</div>}
+        {!isDrawer && <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>({displayedDeals.length})</div>}
+        {isDrawer && <div style={{ fontSize: 10, color: "#475569", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>({displayedDeals.length})</div>}
         <button
           type="button"
           onClick={async () => {
@@ -4150,7 +4158,16 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, on
         {upgradePanel ? <div style={{ marginTop: 10 }}>{upgradePanel}</div> : null}
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
-        {deals.map((deal) => {
+        {hasInactiveDeals ? (
+          <button
+            type="button"
+            onClick={onToggleShowInactive}
+            style={{ display: "block", width: "100%", background: "transparent", border: "none", padding: "6px 14px 10px", fontSize: 10, color: "#475569", letterSpacing: "0.06em", cursor: "pointer", fontFamily: "'Syne', sans-serif", textAlign: "left" }}
+          >
+            {showInactive ? "Hide inactive" : `Show inactive (${hiddenInactiveCount})`}
+          </button>
+        ) : null}
+        {displayedDeals.map((deal) => {
           const m = calculateMetrics(deal.inputs);
           const score = SCORE_STYLES[m.dealScore];
           const isActive = deal.id === activeDealId;
@@ -4739,6 +4756,7 @@ export default function App() {
   const [rehabAiUndoSnapshot, setRehabAiUndoSnapshot] = useState<number | null>(null);
   const [dbLoading, setDbLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showInactiveDeals, setShowInactiveDeals] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const isMobile = useIsMobile();
   const saveTimer = useRef<any>(null);
@@ -5468,8 +5486,8 @@ export default function App() {
           }}
         />
       )}
-      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setShowHelp(false); setActiveDealId(id); }} onNew={handleAddDeal} onOpenSettings={() => { setShowHelp(false); setShowSettings(true); }} onOpenHelp={() => { setShowSettings(false); setShowHelp(true); }} syncing={syncing} hasPendingWalkthroughJobs={hasPendingWalkthroughJobs} upgradePanel={sidebarUpgradePanel} variant="sidebar" />}
-      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setShowHelp(false); setActiveDealId(id); }} onNew={handleAddDeal} onOpenSettings={() => { setShowHelp(false); setShowSettings(true); }} onOpenHelp={() => { setShowSettings(false); setShowHelp(true); }} syncing={syncing} hasPendingWalkthroughJobs={hasPendingWalkthroughJobs} upgradePanel={sidebarUpgradePanel} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
+      {!isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setShowHelp(false); setActiveDealId(id); }} onNew={handleAddDeal} onOpenSettings={() => { setShowHelp(false); setShowSettings(true); }} onOpenHelp={() => { setShowSettings(false); setShowHelp(true); }} syncing={syncing} hasPendingWalkthroughJobs={hasPendingWalkthroughJobs} upgradePanel={sidebarUpgradePanel} showInactive={showInactiveDeals} onToggleShowInactive={() => setShowInactiveDeals((v) => !v)} variant="sidebar" />}
+      {isMobile && <DealsSidebar deals={deals} activeDealId={activeDealId} onSelect={(id) => { setShowSettings(false); setShowHelp(false); setActiveDealId(id); }} onNew={handleAddDeal} onOpenSettings={() => { setShowHelp(false); setShowSettings(true); }} onOpenHelp={() => { setShowSettings(false); setShowHelp(true); }} syncing={syncing} hasPendingWalkthroughJobs={hasPendingWalkthroughJobs} upgradePanel={sidebarUpgradePanel} showInactive={showInactiveDeals} onToggleShowInactive={() => setShowInactiveDeals((v) => !v)} variant="drawer" drawerOpen={sidebarOpen} onCloseDrawer={() => setSidebarOpen(false)} />}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", minWidth: 0 }}>
         {/* Header */}
         <div style={{ background: "linear-gradient(135deg, #060b14 0%, #0d1829 100%)", borderBottom: "1px solid #1e293b", padding: isMobile ? "12px 14px" : "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
