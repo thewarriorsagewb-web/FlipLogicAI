@@ -227,6 +227,39 @@ function calculateCompARV(comps: Comp[], subjectSqft: number) {
   return { weightedArv, avgPpsf, strongAvg, allAvg };
 }
 
+function joinNaturalList(items: string[]): string {
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+function getCompsStaleState(deal: Deal, validCompCount: number): { isStale: boolean; staleMessage: string | null } {
+  const staleSqft = deal.compsSnapshotSqft != null && deal.compsSnapshotSqft !== deal.subjectSqft;
+  const staleBeds = deal.compsSnapshotBedrooms != null && deal.compsSnapshotBedrooms !== deal.subjectBedrooms;
+  const staleBaths = deal.compsSnapshotBathrooms != null && deal.compsSnapshotBathrooms !== deal.subjectBathrooms;
+  const changedLabels: string[] = [];
+  if (staleSqft) changedLabels.push("square footage");
+  if (staleBeds) changedLabels.push("bedrooms");
+  if (staleBaths) changedLabels.push("bathrooms");
+  const isStale = validCompCount > 0 && (staleSqft || staleBeds || staleBaths);
+  const staleMessage = isStale
+    ? `Heads up — the ${joinNaturalList(changedLabels)} changed since these comps were pulled, so the comp-derived ARV may no longer match the property. Refresh your comps to update it.`
+    : null;
+  return { isStale, staleMessage };
+}
+
+const COMPS_STALE_WARNING_STYLE: CSSProperties = {
+  fontSize: 11,
+  color: "#f59e0b",
+  marginTop: 6,
+  lineHeight: 1.45,
+  background: "rgba(245, 158, 11, 0.08)",
+  border: "1px solid rgba(217, 119, 6, 0.35)",
+  borderRadius: 6,
+  padding: "8px 10px",
+};
+
 function aiFindingEstimatedCost(f: AIFinding): number {
   const o = f as unknown as { estimatedCost?: unknown; estimated_cost?: unknown };
   const v = o.estimatedCost ?? o.estimated_cost;
@@ -3651,6 +3684,7 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
 
   const { weightedArv, avgPpsf, strongAvg, allAvg } = calculateCompARV(comps, subjectSqft);
   const validComps = comps.filter((c) => c.salePrice > 0);
+  const { isStale: compsIsStale, staleMessage: compsStaleMessage } = getCompsStaleState(activeDeal, validComps.length);
   const arvDiff = enteredArv > 0 && weightedArv > 0 ? ((enteredArv - weightedArv) / weightedArv) * 100 : null;
   return (
     <div>
@@ -3738,9 +3772,13 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
             </div>
           )}
           {validComps.length > 0 && (
-            <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
-              Comps reflect the property as it was when they were pulled. If you&apos;ve since changed the square footage, beds, or baths, refresh or update your comps so the ARV stays accurate.
-            </div>
+            compsIsStale && compsStaleMessage ? (
+              <div style={COMPS_STALE_WARNING_STYLE}>{compsStaleMessage}</div>
+            ) : (
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
+                Comps reflect the property as it was when they were pulled. If you&apos;ve since changed the square footage, beds, or baths, refresh or update your comps so the ARV stays accurate.
+              </div>
+            )
           )}
         </div>
         {arvDiff !== null && (
@@ -5666,6 +5704,8 @@ export default function App() {
           {activeTab === "deal" && (() => {
             const { weightedArv: compArvW, avgPpsf: compAvgPpsf } = calculateCompARV(activeDeal.comps, activeDeal.subjectSqft);
             const nComps = activeDeal.comps.filter((c) => c.salePrice > 0 && c.sqft > 0).length;
+            const validCompCount = activeDeal.comps.filter((c) => c.salePrice > 0).length;
+            const { isStale: dealCompsIsStale, staleMessage: dealCompsStaleMessage } = getCompsStaleState(activeDeal, validCompCount);
             const activeRe = inputs.rehabCost;
             const activeAr = calculateActiveARV(inputs, activeDeal.comps, activeDeal.subjectSqft);
             const arvBySource: Record<ArvSource, number> = { initial: inputs.arvInitialEstimate, comp_derived: compArvW };
@@ -5821,6 +5861,9 @@ export default function App() {
                               ≈ ${compAvgPpsf.toFixed(0)}/sqft × {Math.round(activeDeal.subjectSqft).toLocaleString()} sqft
                             </div>
                           )}
+                          {inputs.arvSource === "comp_derived" && nComps > 0 && compAvgPpsf > 0 && activeDeal.subjectSqft > 0 && dealCompsIsStale && dealCompsStaleMessage ? (
+                            <div style={{ ...COMPS_STALE_WARNING_STYLE, textAlign: isMobile ? "left" : "right" }}>{dealCompsStaleMessage}</div>
+                          ) : null}
                         </div>
                       )}
                     </div>
