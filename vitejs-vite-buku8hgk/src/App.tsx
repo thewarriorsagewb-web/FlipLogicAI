@@ -4743,6 +4743,7 @@ export default function App() {
   const isMobile = useIsMobile();
   const saveTimer = useRef<any>(null);
   const propertySpecsRef = useRef<HTMLDivElement | null>(null);
+  const demoCreationStarted = useRef(false);
   const [aiPropertyChangeBanner, setAiPropertyChangeBanner] = useState<PropertyChanges | null>(null);
 
   const { subscription, loading: subLoading, refetch: refetchSubscription } = useSubscription(supabase, user?.id ?? null);
@@ -4997,7 +4998,15 @@ export default function App() {
       if (error) throw error;
       if (!dealsData || dealsData.length === 0) {
         // New user — create demo deal
-        await createDemoDeal();
+        if (demoCreationStarted.current) {
+          setDbLoading(false);
+          return;
+        }
+        demoCreationStarted.current = true;
+        const created = await createDemoDeal();
+        if (!created) {
+          demoCreationStarted.current = false;
+        }
         setDbLoading(false);
         return;
       }
@@ -5120,7 +5129,7 @@ export default function App() {
     setDbLoading(false);
   };
 
-  const createDemoDeal = async () => {
+  const createDemoDeal = async (): Promise<boolean> => {
     const { data: dealData, error } = await supabase.from("deals").insert({
       user_id: user.id,
       ai_analysis_used: true,
@@ -5152,12 +5161,13 @@ export default function App() {
       lender_info: { investorName: "", investorCompany: "", investorPhone: "", investorEmail: "", lenderName: "" },
     }).select().single();
 
-    if (error || !dealData) return;
+    if (error || !dealData) return false;
 
     await supabase.from("comps").insert(DEMO_COMPS.map(c => ({ deal_id: dealData.id, user_id: user.id, address: c.address, sale_price: c.salePrice, sqft: c.sqft, bed_bath: c.bedBath, days_on_market: c.daysOnMarket, sold_date: c.soldDate, strength: c.strength, notes: c.notes })));
     await supabase.from("scope_items").insert(DEMO_SCOPE.map(s => ({ deal_id: dealData.id, user_id: user.id, category: s.category, description: s.description, quantity: s.quantity, unit: s.unit, my_estimate: s.myEstimate, notes: s.notes, priority: s.priority })));
 
     await loadDeals();
+    return true;
   };
 
   // ─── Auto-save with debounce ──────────────────────────────────────────────
