@@ -3639,7 +3639,8 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
       setPullSuccess("Refreshed comps from RentCast");
       await triggerAIUse(activeDeal.id);
     } catch (e: unknown) {
-      setPullError(e instanceof Error ? e.message : "Couldn't pull fresh comps — your existing comps are unchanged.");
+      console.error("refreshCompsFromRentCast:", e);
+      setPullError("Couldn't pull fresh comps — your existing comps are unchanged.");
     } finally {
       setRefreshingComps(false);
     }
