@@ -3656,6 +3656,11 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
               ≈ ${avgPpsf.toFixed(0)}/sqft × {Math.round(subjectSqft).toLocaleString()} sqft
             </div>
           )}
+          {validComps.length > 0 && (
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 6, lineHeight: 1.45 }}>
+              Comps reflect the property as it was when they were pulled. If you&apos;ve since changed the square footage, beds, or baths, refresh or update your comps so the ARV stays accurate.
+            </div>
+          )}
         </div>
         {arvDiff !== null && (
           <div style={{ textAlign: isMobile ? "left" : "center" }}>
