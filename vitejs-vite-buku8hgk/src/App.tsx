@@ -3651,6 +3651,11 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: isMobile ? 12 : 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Comp-Derived ARV</div>
           <div style={{ fontSize: isMobile ? 22 : 20, fontWeight: 700, color: weightedArv > 0 ? "#22c55e" : "#334155", fontFamily: "monospace" }}>{weightedArv > 0 ? fmt(weightedArv) : "—"}</div>
+          {validComps.length > 0 && avgPpsf > 0 && subjectSqft > 0 && (
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+              ≈ ${avgPpsf.toFixed(0)}/sqft × {Math.round(subjectSqft).toLocaleString()} sqft
+            </div>
+          )}
         </div>
         {arvDiff !== null && (
           <div style={{ textAlign: isMobile ? "left" : "center" }}>
@@ -5565,7 +5570,7 @@ export default function App() {
         <div style={{ padding: isMobile ? "16px 14px 24px" : "20px 24px", flex: 1, overflow: "auto" }}>
 
           {activeTab === "deal" && (() => {
-            const { weightedArv: compArvW } = calculateCompARV(activeDeal.comps, activeDeal.subjectSqft);
+            const { weightedArv: compArvW, avgPpsf: compAvgPpsf } = calculateCompARV(activeDeal.comps, activeDeal.subjectSqft);
             const nComps = activeDeal.comps.filter((c) => c.salePrice > 0 && c.sqft > 0).length;
             const activeRe = inputs.rehabCost;
             const activeAr = calculateActiveARV(inputs, activeDeal.comps, activeDeal.subjectSqft);
@@ -5716,7 +5721,12 @@ export default function App() {
                       )}
                       {k === "comp_derived" && (
                         <div style={{ fontSize: 13, color: nComps > 0 ? "#94a3b8" : "#64748b", gridColumn: isMobile ? "1 / -1" : 3, textAlign: isMobile ? "left" : "right" }}>
-                          {nComps > 0 ? `${fmt(compArvW)} (${nComps} comps)` : "$0 — add comps to enable"}
+                          <div>{nComps > 0 ? `${fmt(compArvW)} (${nComps} comps)` : "$0 — add comps to enable"}</div>
+                          {inputs.arvSource === "comp_derived" && nComps > 0 && compAvgPpsf > 0 && activeDeal.subjectSqft > 0 && (
+                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                              ≈ ${compAvgPpsf.toFixed(0)}/sqft × {Math.round(activeDeal.subjectSqft).toLocaleString()} sqft
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
