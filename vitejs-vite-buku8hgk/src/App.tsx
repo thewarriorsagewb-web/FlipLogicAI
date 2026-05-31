@@ -4094,7 +4094,6 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, on
   const displayedDeals = showInactive
     ? deals
     : deals.filter((d) => !isInactive(d) || d.id === activeDealId);
-  const hasInactiveDeals = deals.some(isInactive);
   const hiddenInactiveCount = deals.filter((d) => isInactive(d) && d.id !== activeDealId).length;
 
   return (
@@ -4158,7 +4157,7 @@ function DealsSidebar({ deals, activeDealId, onSelect, onNew, onOpenSettings, on
         {upgradePanel ? <div style={{ marginTop: 10 }}>{upgradePanel}</div> : null}
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
-        {hasInactiveDeals ? (
+        {hiddenInactiveCount > 0 ? (
           <button
             type="button"
             onClick={onToggleShowInactive}
