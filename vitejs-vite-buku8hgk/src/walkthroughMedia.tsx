@@ -562,7 +562,7 @@ export function WalkthroughMediaRecorder({
       return;
     }
     if (!canUseAI(currentDeal)) {
-      onNeedPaywall("AI Walkthrough requires Investor plan or a free trial analysis");
+      onNeedPaywall("AI Walkthrough isn't available on this deal. Upgrade to Investor to unlock AI features, or keep working on this deal manually.");
       return;
     }
     let runBuildYear = buildYear;

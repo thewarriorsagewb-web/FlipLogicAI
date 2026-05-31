@@ -1970,7 +1970,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, onWalkthro
   const syncPendingJob = async (job: PendingWalkthroughJob) => {
     if (!navigator.onLine) return;
     if (!canUseAI(currentDeal)) {
-      onNeedPaywall("AI Walkthrough requires Investor plan or a free trial analysis");
+      onNeedPaywall("AI Walkthrough isn't available on this deal. Upgrade to Investor to unlock AI features, or keep working on this deal manually.");
       return;
     }
     const { buildYear: apiBy } = await waitForYearGate();
@@ -2112,7 +2112,7 @@ function AIWalkthroughTab({ address, onUpdateYearBuilt, onAddToScope, onWalkthro
       return;
     }
     if (!canUseAI(currentDeal)) {
-      onNeedPaywall("AI Walkthrough requires Investor plan or a free trial analysis");
+      onNeedPaywall("AI Walkthrough isn't available on this deal. Upgrade to Investor to unlock AI features, or keep working on this deal manually.");
       return;
     }
     const { buildYear: apiBy } = await waitForYearGate();
@@ -3543,7 +3543,7 @@ function CompsTab({ comps, subjectSqft, enteredArv, onAddComp, onUpdateComp, onD
 
   const pullCompsFromRentCast = async () => {
     if (!canUseAI(activeDeal)) {
-      onNeedPaywall("Auto-pulling comps requires Investor plan or a free trial analysis");
+      onNeedPaywall("Auto-pull comps isn't available on this deal. Upgrade to Investor to unlock it, or add comps manually.");
       return;
     }
     if (!propertyAddress.trim()) {
@@ -4301,9 +4301,18 @@ function SettingsPage({
       <div style={section}>
         <div style={heading}>Subscription</div>
         <div style={{ fontSize: 13, color: "#f1f5f9", marginBottom: 8 }}>Current plan: <span style={{ color: "#60a5fa", fontWeight: 700 }}>{planLabel}</span></div>
-        <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>
-          {isInvestor ? "Unlimited AI analyses" : `${s?.trial_deals_used ?? 0} of ${s?.trial_deals_limit ?? 5} AI analyses used`}
-        </div>
+        {isInvestor ? (
+          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>Unlimited AI analyses</div>
+        ) : (
+          <>
+            <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>
+              {`${s?.trial_deals_used ?? 0} of ${s?.trial_deals_limit ?? 5} free AI analyses used`}
+            </div>
+            <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>
+              {`${deals.length} of 8 deals saved${deals.some((d) => d.inputs.propertyAddress === "123 Main St, Atlanta, GA 30301") ? " (includes the demo deal)" : ""}`}
+            </div>
+          </>
+        )}
         {showPendingCancel ? (
           <div style={{ background: "rgba(255, 165, 0, 0.1)", border: "1px solid #FFA500", borderRadius: 8, padding: "12px 14px", marginBottom: 10 }}>
             <div style={{ fontSize: 13, color: "#FFA500", fontWeight: 700, marginBottom: 4 }}>⚠ Subscription cancels on {cancelDateLabel}</div>
